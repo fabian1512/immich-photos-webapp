@@ -776,7 +776,12 @@ $("#seg").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b || b.dataset.mode === state.mode) return;
   state.mode = b.dataset.mode; store.set("mode", state.mode); showLibrary();
 });
+$("#searchBtn").addEventListener("click", () => {
+  const side = $("#sidebar"); side.classList.toggle("search-open");
+  if (side.classList.contains("search-open")) $("#searchInput").focus();
+});
 $("#searchForm").addEventListener("submit", (e) => {
+  $("#sidebar").classList.remove("search-open");
   e.preventDefault(); const q = $("#searchInput").value.trim();
   if (q) location.hash = "#/search/" + encodeURIComponent(q);
 });

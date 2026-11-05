@@ -63,6 +63,13 @@ main{position:relative;overflow-y:auto;height:100%}
   .app{grid-template-columns:1fr;grid-template-rows:1fr auto}
   aside{order:2;flex-direction:row;padding:6px;border:0;border-top:1px solid var(--line);overflow:hidden}
   .side-top,.logout,.side-h,.side-albums{display:none}
+  aside{padding-bottom:calc(6px + env(safe-area-inset-bottom))}
+  #mainNav a,.search-btn{min-width:0;height:44px;display:flex;align-items:center;justify-content:center;border-radius:12px}
+  #mainNav .search-btn{display:flex;flex:1;background:none;border:0;color:var(--dim)}
+  .search-btn svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  #searchForm{display:none;position:fixed;left:12px;right:12px;bottom:calc(64px + env(safe-area-inset-bottom));z-index:30;padding:8px;border-radius:14px;background:var(--bar-bg);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 4px 24px #0004}
+  aside.search-open #searchForm{display:block}
+  #searchInput{font-size:16px}
   #mainNav{flex-direction:row;width:100%}#mainNav a{flex:1;justify-content:center;font-size:0;gap:0}
   .topbar{grid-template-columns:1fr auto;padding:0 12px}.seg{grid-column:1/-1;grid-row:2;justify-self:center}.topbar{height:auto;min-height:var(--bar);padding-bottom:8px}
   .zoom{display:none}
@@ -175,8 +182,8 @@ main{position:relative;overflow-y:auto;height:100%}
 
 /* ---- Language picker ---- */
 .lang-select{background:var(--bg2);color:var(--text);border:0;border-radius:9px;padding:7px 10px;font:inherit;font-size:13px;width:100%}
-.side-lang{margin-top:auto}
-.side-lang+.logout{margin-top:0}
+.logout{margin-top:auto}
+.search-btn{display:none}
 .login .lang-select{margin-top:6px}
 [dir="rtl"] .tb-right{justify-self:start}
 
