@@ -172,3 +172,10 @@ main{position:relative;overflow-y:auto;height:100%}
 /* ---- Viewer: Fokus-/Vollbildmodus ---- */
 .viewer.immersive .v-tools,.viewer.immersive #vClose,.viewer.immersive .nav,.viewer.immersive #vInfo,.viewer.immersive .v-panel{display:none!important}
 .viewer.immersive{cursor:none}
+
+/* ---- Language picker ---- */
+.lang-select{background:var(--bg2);color:var(--text);border:0;border-radius:9px;padding:7px 10px;font:inherit;font-size:13px;width:100%}
+.side-lang{margin-top:auto}
+.side-lang+.logout{margin-top:0}
+.login .lang-select{margin-top:6px}
+[dir="rtl"] .tb-right{justify-self:start}

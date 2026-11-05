@@ -1,0 +1,32 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what happened instead?
+    validations: { required: true }
+  - type: input
+    id: immich
+    attributes:
+      label: Immich server version
+      placeholder: "3.3.6"
+    validations: { required: true }
+  - type: input
+    id: app
+    attributes:
+      label: App version / image tag
+      placeholder: "0.1.0"
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and OS
+      placeholder: "Safari 19 on macOS"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Browser console / server log (optional)
+      description: Remove tokens, e-mail addresses and anything private first.
+      render: text

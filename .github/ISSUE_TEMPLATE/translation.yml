@@ -1,0 +1,17 @@
+name: Translation
+description: Offer a new translation or a correction (no Git knowledge needed)
+labels: [translation]
+body:
+  - type: input
+    id: language
+    attributes:
+      label: Language (code and name)
+      placeholder: "fr — Français"
+    validations: { required: true }
+  - type: textarea
+    id: file
+    attributes:
+      label: Translated file
+      description: Paste the full content of your translated `<code>.json` (copy `public/locales/en.json` and translate the values). See CONTRIBUTING.md.
+      render: json
+    validations: { required: true }

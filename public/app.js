@@ -10,20 +10,29 @@ const store = {
   get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
-const fmt = (o) => new Intl.DateTimeFormat("de-DE", { ...o, timeZone: "UTC" });
-const monthFmt = fmt({ month: "long", year: "numeric" });
-const dateFmt = fmt({ dateStyle: "long", timeStyle: "short" });
-const nf = new Intl.NumberFormat("de-DE");
+const tr = I18n.t; // "t" is used as a local variable name in many places
+// Formatters depend on the chosen language; created in setupFormats() once the language is known.
+let fmt, monthFmt, dateFmt, nf, MONTHS;
+function setupFormats() {
+  const loc = I18n.lang;
+  fmt = (o) => new Intl.DateTimeFormat(loc, { ...o, timeZone: "UTC" });
+  monthFmt = fmt({ month: "long", year: "numeric" });
+  dateFmt = fmt({ dateStyle: "long", timeStyle: "short" });
+  nf = new Intl.NumberFormat(loc);
+  MONTHS = Array.from({ length: 12 }, (_, i) => fmt({ month: "long" }).format(new Date(Date.UTC(2000, i, 1))));
+}
 const img = (id, size) => `/api/assets/${id}/thumbnail?size=${size}`;
-const fmtBytes = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1e3)) + " KB").replace(".", ",");
+const fmtBytes = (n) => (n >= 1e6
+  ? tr("bytes.mb", { n: new Intl.NumberFormat(I18n.lang, { maximumFractionDigits: 1 }).format(n / 1e6) })
+  : tr("bytes.kb", { n: nf.format(Math.max(1, Math.round(n / 1e3))) }));
 
 // ---------- Netzwerk ----------
 async function rawFetch(path, opts = {}) {
   let r;
   try {
     r = await fetch("/api" + path, { credentials: "same-origin", ...opts, headers: { "Content-Type": "application/json", ...(opts.headers || {}) } });
-  } catch { throw new Error("Server nicht erreichbar"); }
-  if (r.status === 401) { showLogin("Sitzung abgelaufen – bitte neu anmelden"); throw new Error("401"); }
+  } catch { throw new Error(tr("error.unreachable")); }
+  if (r.status === 401) { showLogin(tr("login.expired")); throw new Error("401"); }
   if (!r.ok) {
     let msg = ""; try { msg = (await r.json()).message || ""; } catch {}
     throw new Error(`${r.status} ${Array.isArray(msg) ? msg.join(", ") : msg}`.trim());
@@ -42,7 +51,7 @@ function toast(msg, isErr) {
 function showError(msg) {
   $("#empty").classList.remove("hidden"); $("#empty h2").textContent = msg; $("#retry").classList.remove("hidden");
 }
-function clearEmpty() { $("#empty").classList.add("hidden"); $("#empty h2").textContent = "Keine Fotos"; $("#retry").classList.add("hidden"); }
+function clearEmpty() { $("#empty").classList.add("hidden"); $("#empty h2").textContent = tr("empty.photos"); $("#retry").classList.add("hidden"); }
 $("#retry").onclick = () => route();
 
 // ---------- Anmeldung ----------
@@ -60,9 +69,9 @@ $("#loginForm").addEventListener("submit", async (e) => {
   const f = new FormData(e.target);
   try {
     const r = await fetch("/api/auth/login", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: f.get("email"), password: f.get("password") }) });
-    if (!r.ok) throw new Error(r.status === 401 ? "E-Mail oder Passwort falsch" : "Fehler " + r.status);
+    if (!r.ok) throw new Error(r.status === 401 ? tr("login.wrong") : tr("login.error", { status: r.status }));
     e.target.reset(); showApp();
-  } catch (err) { $("#loginError").textContent = err instanceof TypeError ? "Server nicht erreichbar" : err.message; }
+  } catch (err) { $("#loginError").textContent = err instanceof TypeError ? tr("error.unreachable") : err.message; }
 });
 $("#logout").addEventListener("click", async () => {
   try { await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" }); } catch {}
@@ -221,7 +230,7 @@ function gridRelayout() {
 function makeTile(a, idx) {
   const t = el("button", "tile");
   t.dataset.id = a.id; t.dataset.idx = idx;
-  t.setAttribute("aria-label", a.originalFileName || "Foto");
+  t.setAttribute("aria-label", a.originalFileName || tr("common.photo"));
   const i = el("img"); i.decoding = "async"; i.alt = "";
   const hash = ThumbHash.toDataURL(a.thumbhash); // unscharfe Vorschau, bis das echte Bild da ist
   if (hash) t.style.backgroundImage = `url(${hash})`;
@@ -284,10 +293,10 @@ async function loadMore() {
   const f = state.feed;
   if (!f || f.loading || f.done) return; // nie rekursiv
   let failed = false;
-  const items = await f.more().catch((e) => { failed = true; if (e.message !== "401") showError("Fehler: " + e.message); return []; });
+  const items = await f.more().catch((e) => { failed = true; if (e.message !== "401") showError(tr("error.generic", { message: e.message })); return []; });
   if (f !== state.feed) return;
-  if (f.fellBack === "bucket") { f.fellBack = false; console.warn("Zeitleisten-Schnittstelle nicht verfügbar, nutze Suche"); }
-  else if (f.fellBack) { f.fellBack = false; toast("Intelligente Suche nicht verfügbar – suche nach Dateinamen"); }
+  if (f.fellBack === "bucket") { f.fellBack = false; console.warn("Timeline API not available, falling back to search"); }
+  else if (f.fellBack) { f.fellBack = false; toast(tr("search.fallback")); }
   gridAppend(items);
   if (!failed) { f.items.length ? clearEmpty() : ($("#empty").classList.remove("hidden"), $("#retry").classList.add("hidden")); }
   if (!failed && items.length && !f.done) {
@@ -301,8 +310,8 @@ let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() 
 function updateSelUI() {
   $("#content").classList.toggle("selecting", state.sel.on);
   $("#selbar").classList.toggle("hidden", !state.sel.on);
-  $("#selToggle").textContent = state.sel.on ? "Fertig" : "Auswählen";
-  $("#selCount").textContent = `${state.sel.ids.size} ausgewählt`;
+  $("#selToggle").textContent = state.sel.on ? tr("select.done") : tr("select.start");
+  $("#selCount").textContent = tr("select.count", { count: state.sel.ids.size });
   for (const b of ["#selFav", "#selAlbum", "#selDl", "#selDel"]) $(b).disabled = state.sel.ids.size === 0;
 }
 function exitSelect() { state.sel.on = false; state.sel.ids.clear(); document.querySelectorAll(".tile.sel").forEach((t) => t.classList.remove("sel")); updateSelUI(); }
@@ -329,15 +338,15 @@ function removeItems(ids) {
 async function deleteItems(items) {
   if (!items.length) return false;
   const n = items.length;
-  if (!confirm(`${n === 1 ? "Dieses Objekt" : n + " Objekte"} in den Papierkorb verschieben?\n(Immich löscht sie nach der eingestellten Frist endgültig.)`)) return false;
+  if (!confirm(tr("actions.deleteConfirm", { count: n }))) return false;
   await api("/assets", { method: "DELETE", body: JSON.stringify({ ids: items.map((a) => a.id), force: false }) });
   removeItems(new Set(items.map((a) => a.id)));
-  toast(`${n} in den Papierkorb verschoben`);
+  toast(tr("actions.deleted", { count: n }));
   return true;
 }
 async function downloadItems(items) {
   if (items.length === 1) return triggerDownload(`/api/assets/${items[0].id}/original`, items[0].originalFileName || "foto");
-  toast("Archiv wird erstellt …");
+  toast(tr("actions.archive"));
   const r = await rawFetch("/download/archive", { method: "POST", body: JSON.stringify({ assetIds: items.map((a) => a.id) }) });
   const url = URL.createObjectURL(await r.blob());
   triggerDownload(url, "Fotos.zip"); setTimeout(() => URL.revokeObjectURL(url), 60000);
@@ -352,7 +361,7 @@ async function pickAlbum() {
       if (a.albumThumbnailAssetId) { i.alt = ""; i.src = img(a.albumThumbnailAssetId, "thumbnail"); }
       b.append(i, el("span", null, a.albumName)); b.onclick = () => { dlg.close(); resolve(a); }; list.append(b);
     }
-    if (!(state.albums || []).length) list.append(el("p", null, "Keine Alben vorhanden."));
+    if (!(state.albums || []).length) list.append(el("p", null, tr("empty.albums")));
     dlg.onclose = () => resolve(null); $("#albumCancel").onclick = () => dlg.close(); dlg.showModal();
   });
 }
@@ -360,9 +369,9 @@ async function addToAlbum(items) {
   const album = await pickAlbum(); if (!album) return;
   const res = await api(`/albums/${album.id}/assets`, { method: "PUT", body: JSON.stringify({ ids: items.map((a) => a.id) }) });
   const ok = (res || []).filter((x) => x.success).length, dup = (res || []).filter((x) => x.error === "duplicate").length;
-  toast(`${ok} zu „${album.albumName}" hinzugefügt${dup ? `, ${dup} ${dup === 1 ? "war" : "waren"} schon enthalten` : ""}`);
+  toast(dup ? tr("albums.addedDup", { added: ok, album: album.albumName, count: dup }) : tr("albums.added", { count: ok, album: album.albumName }));
 }
-const guard = (fn) => async () => { try { await fn(); } catch (e) { if (e.message !== "401") toast("Fehler: " + e.message, true); } };
+const guard = (fn) => async () => { try { await fn(); } catch (e) { if (e.message !== "401") toast(tr("error.generic", { message: e.message }), true); } };
 $("#selFav").onclick = guard(async () => { const it = selectedItems(); await setFavorite(it, !it.every((a) => a.isFavorite)); });
 $("#selAlbum").onclick = guard(async () => addToAlbum(selectedItems()));
 $("#selDl").onclick = guard(async () => downloadItems(selectedItems()));
@@ -403,7 +412,6 @@ function zoom(d) {
 $("#zOut").onclick = () => zoom(-1); $("#zIn").onclick = () => zoom(1);
 
 // ---------- Mediathek: Jahre / Monate (Übersichtskarten) und Alle Fotos ----------
-const MONTHS = Array.from({ length: 12 }, (_, i) => fmt({ month: "long" }).format(new Date(Date.UTC(2000, i, 1))));
 const coverQueue = { running: 0, waiting: [] };
 function pumpCovers() {
   while (coverQueue.running < 4 && coverQueue.waiting.length) {
@@ -453,7 +461,7 @@ function makeCard(label, sub, after, before, size, big, onClick) {
 async function showOverview(restore) {
   const mode = state.mode, token = ++state.overviewToken;
   let buckets;
-  try { buckets = await loadBuckets(); } catch (e) { if (e.message !== "401" && token === state.overviewToken) showError("Fehler: " + e.message); return; }
+  try { buckets = await loadBuckets(); } catch (e) { if (e.message !== "401" && token === state.overviewToken) showError(tr("error.generic", { message: e.message })); return; }
   if (token !== state.overviewToken || state.view !== "library" || mode !== state.mode) return;
   if (!buckets.length) $("#empty").classList.remove("hidden");
   const content = $("#content"); content.replaceChildren();
@@ -461,14 +469,14 @@ async function showOverview(restore) {
   for (const y of [...new Set(buckets.map((b) => b.year))]) {
     const ofYear = buckets.filter((b) => b.year === y), total = ofYear.reduce((n, b) => n + b.count, 0);
     if (mode === "years") {
-      wrap.append(makeCard(String(y), `${nf.format(total)} Objekte`, new Date(Date.UTC(y, 0, 1)).toISOString(), new Date(Date.UTC(y + 1, 0, 1)).toISOString(), "preview", true, () => {
+      wrap.append(makeCard(String(y), tr("count.items", { count: total, n: nf.format(total) }), new Date(Date.UTC(y, 0, 1)).toISOString(), new Date(Date.UTC(y + 1, 0, 1)).toISOString(), "preview", true, () => {
         state.mode = "months"; store.set("mode", "months"); state.pendingYear = y; showLibrary();
       }));
     } else {
       const head = el("div", "ov-year", String(y)); head.id = "y" + y; wrap.append(head);
       const g = el("div", "cards");
       for (const b of ofYear) {
-        g.append(makeCard(MONTHS[b.month], `${nf.format(b.count)} Objekte`, b.start, b.end, "thumbnail", false, () => {
+        g.append(makeCard(MONTHS[b.month], tr("count.items", { count: b.count, n: nf.format(b.count) }), b.start, b.end, "thumbnail", false, () => {
           state.scroll.months = $("#main").scrollTop;
           location.hash = `#/month/${b.year}-${String(b.month + 1).padStart(2, "0")}`;
         }));
@@ -484,10 +492,10 @@ async function showOverview(restore) {
 function showLibrary(restore) {
   state.view = "library";
   if (state.mode === "all") {
-    showFeed({ visibility: "timeline" }, "Mediathek", { seg: true, makeFeed: () => libraryFeed(null, { visibility: "timeline" }) }); state.view = "library";
+    showFeed({ visibility: "timeline" }, tr("nav.library"), { seg: true, makeFeed: () => libraryFeed(null, { visibility: "timeline" }) }); state.view = "library";
   } else {
     resetView(); state.view = "library";
-    setHeader("Mediathek", { seg: true }); syncControls();
+    setHeader(tr("nav.library"), { seg: true }); syncControls();
     showOverview(restore);
   }
 }
@@ -506,21 +514,21 @@ function showMonth(ym) {
 function showSearch(q) {
   state.view = "search";
   $("#searchInput").value = q;
-  showFeed({ query: q, visibility: "timeline" }, `Suche: ${q}`, {
+  showFeed({ query: q, visibility: "timeline" }, tr("search.title", { q }), {
     back: true, noDate: true,
     feedOpts: { endpoint: "/search/smart", size: 100, fallback: { endpoint: "/search/metadata", filters: { originalFileName: q, visibility: "timeline" } } },
   });
 }
 async function showAlbums() {
-  resetView(); setHeader("Alben");
+  resetView(); setHeader(tr("nav.albums"));
   let albums;
-  try { albums = await loadSidebarAlbums(); } catch (e) { if (e.message !== "401") showError("Fehler: " + e.message); return; }
+  try { albums = await loadSidebarAlbums(); } catch (e) { if (e.message !== "401") showError(tr("error.generic", { message: e.message })); return; }
   if (location.hash !== "#/albums") return;
   const wrap = el("div", "albums");
   for (const a of [...albums].sort((x, y) => (y.endDate || "").localeCompare(x.endDate || ""))) {
     const b = el("button", "album"), cover = el("div", "cover");
     if (a.albumThumbnailAssetId) { const i = el("img"); i.loading = "lazy"; i.alt = ""; i.src = img(a.albumThumbnailAssetId, "thumbnail"); i.onerror = () => i.remove(); cover.append(i); }
-    b.append(cover, el("b", null, a.albumName), el("small", null, `${nf.format(a.assetCount)} Objekte`));
+    b.append(cover, el("b", null, a.albumName), el("small", null, tr("count.items", { count: a.assetCount, n: nf.format(a.assetCount) })));
     b.onclick = () => (location.hash = "#/album/" + a.id + "/" + encodeURIComponent(a.albumName));
     wrap.append(b);
   }
@@ -571,12 +579,12 @@ setInterval(() => { if (!document.hidden) refreshAlbums(true); }, 60000);
 // ---------- Personen ----------
 const personAvatar = (id, cls) => { const i = el("img"); i.alt = ""; i.loading = "lazy"; i.src = `/api/people/${id}/thumbnail`; i.onerror = () => { const ph = el("span", "ph"); i.replaceWith(ph); }; return i; };
 function personCard(p) {
-  const b = el("button", "person"); b.append(personAvatar(p.id), el("b", null, p.name || "Unbenannt"));
+  const b = el("button", "person"); b.append(personAvatar(p.id), el("b", null, p.name || tr("people.unnamed")));
   b.onclick = () => (location.hash = `#/person/${p.id}/${encodeURIComponent(p.name || "Person")}`); return b;
 }
 const sortPeople = (list) => [...list].sort((a, b) => (!!b.name - !!a.name) || (a.name || "").localeCompare(b.name || "", "de"));
 async function showPeople() {
-  resetView(); setHeader("Personen");
+  resetView(); setHeader(tr("nav.people"));
   const wrap = el("div", "people"); $("#content").append(wrap);
   const token = state.overviewToken; let page = 1, more = null;
   const load = async () => {
@@ -586,9 +594,9 @@ async function showPeople() {
       // innerhalb einer Seite: benannte zuerst
       for (const p of sortPeople(r.people)) wrap.append(personCard(p));
       if (more) more.remove(); more = null;
-      if (r.hasNextPage) { page++; more = el("button", "pill more", "Mehr anzeigen"); more.onclick = load; $("#content").append(more); }
+      if (r.hasNextPage) { page++; more = el("button", "pill more", tr("people.more")); more.onclick = load; $("#content").append(more); }
       if (page === 1 && !r.people.length) $("#empty").classList.remove("hidden");
-    } catch (e) { if (e.message !== "401") showError("Fehler: " + e.message); }
+    } catch (e) { if (e.message !== "401") showError(tr("error.generic", { message: e.message })); }
   };
   await load();
 }
@@ -601,13 +609,13 @@ function showPerson(id, name) {
 
 // ---------- Sammlungen ----------
 async function showCollections() {
-  resetView(); setHeader("Sammlungen");
+  resetView(); setHeader(tr("nav.collections"));
   const token = state.overviewToken, root = el("div", "coll"); $("#content").append(root);
-  const section = (title, link) => { const h = el("h3"); h.append(el("span", null, title)); if (link) { const a = el("a", null, "Alle anzeigen"); a.href = link; h.append(a); } const strip = el("div", "strip"); root.append(h, strip); return strip; };
+  const section = (title, link) => { const h = el("h3"); h.append(el("span", null, title)); if (link) { const a = el("a", null, tr("collections.showAll")); a.href = link; h.append(a); } const strip = el("div", "strip"); root.append(h, strip); return strip; };
   const alive = () => token === state.overviewToken;
-  const quick = section("Medientypen"), qs = el("div", "maprow"); quick.replaceWith(qs);
-  for (const [label, href] of [["Favoriten", "#/favorites"], ["Videos", "#/videos"], ["Live Photos", "#/live"], ["Karte", "#/map"]]) { const a = el("a", null, label); a.href = href; qs.append(a); }
-  const people = section("Personen", "#/people"), places = section("Orte"), albums = section("Alben", "#/albums");
+  const quick = section(tr("collections.mediaTypes")), qs = el("div", "maprow"); quick.replaceWith(qs);
+  for (const [label, href] of [[tr("nav.favorites"), "#/favorites"], [tr("nav.videos"), "#/videos"], [tr("nav.live"), "#/live"], [tr("nav.map"), "#/map"]]) { const a = el("a", null, label); a.href = href; qs.append(a); }
+  const people = section(tr("nav.people"), "#/people"), places = section(tr("collections.places")), albums = section(tr("nav.albums"), "#/albums");
   const drop = (strip) => { if (strip.previousSibling) strip.previousSibling.remove(); strip.remove(); }; // leere Abschnitte ausblenden
   api("/people?withHidden=false&size=40&page=1").then((r) => { if (!alive()) return; for (const p of sortPeople(r.people).filter((p) => p.name).slice(0, 20)) people.append(personCard(p)); if (!people.children.length) drop(people); }).catch(() => drop(people));
   api("/search/cities").then((r) => {
@@ -637,7 +645,7 @@ const lat2y = (lat, z) => { const r = (Math.max(-85.0511, Math.min(85.0511, lat)
 const x2lon = (x, z) => (x / WORLD(z)) * 360 - 180;
 const y2lat = (y, z) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / WORLD(z)))) * 180) / Math.PI;
 async function showMap() {
-  resetView(); setHeader("Karte");
+  resetView(); setHeader(tr("nav.map"));
   const wrap = el("div", "mapwrap"), tilesEl = el("div", "tiles"), pinsEl = el("div", "pins");
   const ctl = el("div", "map-ctl"), zi = el("button", null, "+"), zo = el("button", null, "−"); ctl.append(zi, zo);
   const attr = el("div", "map-attr"); attr.append("© "); const ol = el("a", null, "OpenStreetMap"); ol.href = "https://www.openstreetmap.org/copyright"; ol.target = "_blank"; ol.rel = "noopener"; attr.append(ol);
@@ -647,9 +655,9 @@ async function showMap() {
   try {
     if (!state.markers || Date.now() - state.markersAt > 300000) { state.markers = await api("/map/markers?withPartners=true"); state.markersAt = Date.now(); }
     markers = state.markers;
-  } catch (e) { $("#main").style.overflow = ""; if (e.message !== "401") showError("Fehler: " + e.message); return; }
+  } catch (e) { $("#main").style.overflow = ""; if (e.message !== "401") showError(tr("error.generic", { message: e.message })); return; }
   if (token !== state.overviewToken) { return; }
-  if (!markers.length) { $("#empty h2").textContent = "Keine Fotos mit Ortsangabe"; $("#empty").classList.remove("hidden"); wrap.remove(); $("#main").style.overflow = ""; return; }
+  if (!markers.length) { $("#empty h2").textContent = tr("empty.photosWithLocation"); $("#empty").classList.remove("hidden"); wrap.remove(); $("#main").style.overflow = ""; return; }
   const pts = markers.filter((m) => m.lat != null && m.lon != null);
   let W = wrap.clientWidth, H = wrap.clientHeight;
   // Startansicht: letzte Position, sonst alle Fotos im Bild
@@ -725,7 +733,7 @@ async function showMap() {
   render();
 }
 function showBBox(bbox) {
-  showFeed({}, "Ort auf der Karte", {
+  showFeed({}, tr("map.placeTitle"), {
     back: true,
     makeFeed: () => new BucketFeed({}, {
       prepare: async (f) => { if (!state.userId) state.userId = (await api("/users/me")).id; f.params = { visibility: "timeline", order: "desc", userId: state.userId, withPartners: "true", bbox }; },
@@ -757,9 +765,9 @@ function route() {
   else if (name === "map") showMap();
   else if (name === "bbox") showBBox(decodeURIComponent(id || ""));
   else if (name === "place") { const c = decodeURIComponent(id || ""); showFeed({ city: c, visibility: "timeline" }, c, { back: true }); }
-  else if (name === "live") showFeed({ isMotion: true, visibility: "timeline" }, "Live Photos", { back: true });
-  else if (name === "favorites") { showFeed({ isFavorite: true }, "Favoriten"); state.view = "favorites"; }
-  else if (name === "videos") { showFeed({ type: "VIDEO", visibility: "timeline" }, "Videos"); state.view = "videos"; }
+  else if (name === "live") showFeed({ isMotion: true, visibility: "timeline" }, tr("nav.live"), { back: true });
+  else if (name === "favorites") { showFeed({ isFavorite: true }, tr("nav.favorites")); state.view = "favorites"; }
+  else if (name === "videos") { showFeed({ type: "VIDEO", visibility: "timeline" }, tr("nav.videos")); state.view = "videos"; }
   else showLibrary(restore);
 }
 addEventListener("hashchange", () => { if (!$("#app").classList.contains("hidden")) route(); });
@@ -816,7 +824,7 @@ function showViewer() {
     v.poster = img(a.id, "preview"); v.src = `/api/assets/${a.id}/video/playback`; stage.append(v);
   } else {
     const i = el("img"); i.alt = ""; i.draggable = false; i.src = img(a.id, "preview");
-    i.onerror = () => { stage.replaceChildren(el("p", null, "Keine Vorschau verfügbar")); stage.firstChild.style.color = "#fff"; };
+    i.onerror = () => { stage.replaceChildren(el("p", null, tr("viewer.noPreview"))); stage.firstChild.style.color = "#fff"; };
     stage.append(i);
   }
   $("#vFav").textContent = a.isFavorite ? "♥" : "♡";
@@ -832,24 +840,24 @@ function showViewer() {
 const step = (d) => { if (vIndex < 0) return; const n = vIndex + d; if (n >= 0 && n < state.feed.items.length) { vIndex = n; showViewer(); } };
 async function showInfoPanel() {
   const a = curItem(), panel = $("#vPanel"); if (!a) return;
-  panel.classList.remove("hidden"); panel.replaceChildren(el("p", null, "Lade …"));
+  panel.classList.remove("hidden"); panel.replaceChildren(el("p", null, tr("common.loading")));
   let info = infoCache.get(a.id);
-  try { if (!info) { info = await api(`/assets/${a.id}`); infoCache.set(a.id, info); } } catch (e) { panel.replaceChildren(el("p", null, "Fehler: " + e.message)); return; }
+  try { if (!info) { info = await api(`/assets/${a.id}`); infoCache.set(a.id, info); } } catch (e) { panel.replaceChildren(el("p", null, tr("error.generic", { message: e.message }))); return; }
   if (curItem()?.id !== a.id) return;
   const x = info.exifInfo || {}, dl = el("dl");
   const add = (k, v) => { if (v != null && v !== "") { dl.append(el("dt", null, k)); const dd = el("dd"); if (v instanceof Node) dd.append(v); else dd.textContent = v; dl.append(dd); } };
   const d = new Date(info.localDateTime || info.fileCreatedAt);
-  add("Datum", isNaN(d) ? null : dateFmt.format(d));
-  add("Größe", x.fileSizeInByte ? fmtBytes(x.fileSizeInByte) : null);
-  add("Auflösung", x.exifImageWidth && x.exifImageHeight ? `${x.exifImageWidth} × ${x.exifImageHeight} px (${((x.exifImageWidth * x.exifImageHeight) / 1e6).toFixed(1).replace(".", ",")} MP)` : null);
-  add("Kamera", [x.make, x.model].filter(Boolean).join(" "));
-  add("Objektiv", x.lensModel);
-  add("Belichtung", [x.fNumber && `ƒ/${x.fNumber}`, x.exposureTime && `${x.exposureTime} s`, x.iso && `ISO ${x.iso}`, x.focalLength && `${x.focalLength} mm`].filter(Boolean).join("  ·  "));
-  add("Ort", [x.city, x.state, x.country].filter(Boolean).join(", "));
-  if (x.latitude != null && x.longitude != null) { const l = el("a", null, `${x.latitude.toFixed(4)}, ${x.longitude.toFixed(4)}`); l.href = `https://www.openstreetmap.org/?mlat=${x.latitude}&mlon=${x.longitude}#map=15/${x.latitude}/${x.longitude}`; l.target = "_blank"; l.rel = "noopener"; add("Koordinaten", l); }
-  add("Beschreibung", x.description);
-  add("Besitzer", info.owner && info.owner.name);
-  add("Typ", info.originalMimeType);
+  add(tr("info.date"), isNaN(d) ? null : dateFmt.format(d));
+  add(tr("info.size"), x.fileSizeInByte ? fmtBytes(x.fileSizeInByte) : null);
+  add(tr("info.resolution"), x.exifImageWidth && x.exifImageHeight ? tr("info.resolutionValue", { w: x.exifImageWidth, h: x.exifImageHeight, mp: new Intl.NumberFormat(I18n.lang, { maximumFractionDigits: 1 }).format((x.exifImageWidth * x.exifImageHeight) / 1e6) }) : null);
+  add(tr("info.camera"), [x.make, x.model].filter(Boolean).join(" "));
+  add(tr("info.lens"), x.lensModel);
+  add(tr("info.exposure"), [x.fNumber && `ƒ/${x.fNumber}`, x.exposureTime && `${x.exposureTime} s`, x.iso && `ISO ${x.iso}`, x.focalLength && `${x.focalLength} mm`].filter(Boolean).join("  ·  "));
+  add(tr("info.place"), [x.city, x.state, x.country].filter(Boolean).join(", "));
+  if (x.latitude != null && x.longitude != null) { const l = el("a", null, `${x.latitude.toFixed(4)}, ${x.longitude.toFixed(4)}`); l.href = `https://www.openstreetmap.org/?mlat=${x.latitude}&mlon=${x.longitude}#map=15/${x.latitude}/${x.longitude}`; l.target = "_blank"; l.rel = "noopener"; add(tr("info.coordinates"), l); }
+  add(tr("info.description"), x.description);
+  add(tr("info.owner"), info.owner && info.owner.name);
+  add(tr("info.type"), info.originalMimeType);
   panel.replaceChildren(el("h4", null, info.originalFileName || a.originalFileName || ""), dl);
 }
 $("#vClose").onclick = closeViewer; $("#vPrev").onclick = () => step(-1); $("#vNext").onclick = () => step(1);
@@ -899,5 +907,15 @@ const endPtr = (e) => {
 stage.addEventListener("pointerup", endPtr); stage.addEventListener("pointercancel", endPtr);
 
 // ---------- Start ----------
+function setupLanguagePickers() {
+  document.querySelectorAll("[data-lang-select]").forEach((sel) => {
+    sel.replaceChildren(...I18n.languages.map((l) => { const o = el("option", null, l.name); o.value = l.code; o.selected = l.code === I18n.lang; return o; }));
+    sel.hidden = I18n.languages.length < 2; // nothing to choose from
+    sel.onchange = () => I18n.setLanguage(sel.value);
+  });
+}
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
-fetch("/api/users/me", { credentials: "same-origin" }).then((r) => (r.ok ? showApp() : showLogin())).catch(showLogin);
+I18n.init().then(() => {
+  setupFormats(); setupLanguagePickers();
+  return fetch("/api/users/me", { credentials: "same-origin" }).then((r) => (r.ok ? showApp() : showLogin())).catch(showLogin);
+});

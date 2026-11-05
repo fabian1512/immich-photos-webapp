@@ -20,10 +20,10 @@ node --test test/*.test.mjs >/dev/null
 echo "-> copying files to $DEPLOY_HOST:$DIR"
 "${SSH[@]}" "mkdir -p '$DIR' && rm -rf '$DIR/public'"
 COPYFILE_DISABLE=1 tar -cf - Dockerfile server.mjs public | "${SSH[@]}" "tar -xf - -C '$DIR' 2>/dev/null"
-scp -q "${SSH_OPTS[@]}" docker-compose.yml "$DEPLOY_HOST:$DIR/docker-compose.yml"
+scp -q "${SSH_OPTS[@]}" docker-compose.yml docker-compose.build.yml "$DEPLOY_HOST:$DIR/"
 
 echo "-> building and starting the container"
-"${SSH[@]}" "cd '$DIR' && docker compose -p fotos-web up -d --build 2>&1 | tail -2"
+"${SSH[@]}" "cd '$DIR' && docker compose -p fotos-web -f docker-compose.yml -f docker-compose.build.yml up -d --build 2>&1 | tail -2"
 
 echo "-> health check"
 PORT="${PUBLIC_PORT:-8090}"

@@ -1,0 +1,105 @@
+{
+  "_meta.name": "English",
+  "_meta.dir": "ltr",
+
+  "app.name": "Photos",
+
+  "nav.library": "Library",
+  "nav.collections": "Collections",
+  "nav.favorites": "Favorites",
+  "nav.map": "Map",
+  "nav.videos": "Videos",
+  "nav.people": "People",
+  "nav.allAlbums": "All albums",
+  "nav.albums": "Albums",
+  "nav.live": "Live Photos",
+  "nav.logout": "Sign out",
+
+  "search.placeholder": "Search, e.g. “dog at the beach”",
+  "search.aria": "Search",
+  "search.title": "Search: {q}",
+  "search.fallback": "Smart search is not available – searching by file name",
+
+  "login.email": "Email",
+  "login.password": "Password",
+  "login.submit": "Sign in",
+  "login.wrong": "Wrong email or password",
+  "login.error": "Error {status}",
+  "login.expired": "Session expired – please sign in again",
+  "login.language": "Language",
+
+  "seg.years": "Years",
+  "seg.months": "Months",
+  "seg.all": "All Photos",
+  "zoom.out": "Smaller",
+  "zoom.in": "Larger",
+
+  "common.back": "Back",
+  "common.close": "Close",
+  "common.cancel": "Cancel",
+  "common.loading": "Loading …",
+  "common.photo": "Photo",
+
+  "error.generic": "Error: {message}",
+  "error.unreachable": "Server not reachable",
+
+  "empty.photos": "No photos",
+  "empty.photosWithLocation": "No photos with a location",
+  "empty.albums": "No albums yet.",
+  "empty.retry": "Try again",
+
+  "count.items.one": "{n} item",
+  "count.items.other": "{n} items",
+
+  "select.start": "Select",
+  "select.done": "Done",
+  "select.count": "{count} selected",
+  "select.favorite": "♥ Favorite",
+  "select.album": "＋ Album",
+  "select.download": "⬇ Download",
+  "select.delete": "🗑 Delete",
+
+  "actions.deleteConfirm.one": "Move {count} item to the trash?\n(Immich deletes it permanently after the configured retention period.)",
+  "actions.deleteConfirm.other": "Move {count} items to the trash?\n(Immich deletes them permanently after the configured retention period.)",
+  "actions.deleted": "{count} moved to the trash",
+  "actions.archive": "Creating archive …",
+
+  "albums.addTitle": "Add to album",
+  "albums.added": "Added {count} to “{album}”",
+  "albums.addedDup.one": "Added {added} to “{album}”, {count} was already in it",
+  "albums.addedDup.other": "Added {added} to “{album}”, {count} were already in it",
+
+  "people.unnamed": "Unnamed",
+  "people.more": "Show more",
+
+  "collections.mediaTypes": "Media types",
+  "collections.places": "Places",
+  "collections.showAll": "Show all",
+
+  "map.placeTitle": "Place on the map",
+
+  "viewer.favorite": "Favorite",
+  "viewer.fullscreen": "Fullscreen (f)",
+  "viewer.info": "Info",
+  "viewer.download": "Download",
+  "viewer.delete": "Delete",
+  "viewer.prev": "Previous",
+  "viewer.next": "Next",
+  "viewer.noPreview": "No preview available",
+
+  "info.date": "Date",
+  "info.size": "Size",
+  "info.resolution": "Resolution",
+  "info.resolutionValue": "{w} × {h} px ({mp} MP)",
+  "info.camera": "Camera",
+  "info.lens": "Lens",
+  "info.exposure": "Exposure",
+  "info.place": "Place",
+  "info.coordinates": "Coordinates",
+  "info.description": "Description",
+  "info.owner": "Owner",
+  "info.type": "Type",
+
+  "bytes.mb": "{n} MB",
+  "bytes.kb": "{n} KB"
+}

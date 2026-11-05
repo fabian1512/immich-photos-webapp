@@ -10,7 +10,7 @@ const target = new URL(process.env.IMMICH_URL || "http://localhost:2283");
 const port = Number(process.env.PORT || 8080);
 const types = {
   ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript",
-  ".svg": "image/svg+xml", ".png": "image/png", ".webmanifest": "application/manifest+json", ".json": "application/json",
+  ".svg": "image/svg+xml", ".png": "image/png", ".webmanifest": "application/manifest+json", ".json": "application/json; charset=utf-8",
 };
 
 http.createServer((req, res) => {
@@ -22,6 +22,17 @@ http.createServer((req, res) => {
     up.on("error", () => { res.writeHead(502); res.end("Immich nicht erreichbar"); });
     req.pipe(up);
     return;
+  }
+  if (req.url.split("?")[0] === "/locales/index.json") {
+    // Every public/locales/<code>.json is an available language; "_meta.name" is its display name.
+    try {
+      const list = fs.readdirSync(path.join(root, "locales")).filter((f) => /^[a-z]{2,3}(-[A-Za-z0-9]+)?\.json$/.test(f)).map((f) => {
+        const code = f.slice(0, -5); let meta = {};
+        try { meta = JSON.parse(fs.readFileSync(path.join(root, "locales", f), "utf8")); } catch {}
+        return { code, name: meta["_meta.name"] || code, dir: meta["_meta.dir"] || "ltr" };
+      }).sort((a, b) => (a.code === "en" ? -1 : b.code === "en" ? 1 : a.name.localeCompare(b.name)));
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" }); return res.end(JSON.stringify(list));
+    } catch { res.writeHead(500); return res.end("[]"); }
   }
   if (req.url === "/healthz") { res.writeHead(200, { "content-type": "text/plain" }); return res.end("ok"); }
   let p = decodeURIComponent(new URL(req.url, "http://x").pathname);

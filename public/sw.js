@@ -1,6 +1,6 @@
-const SHELL = "fotos-shell-v4";
+const SHELL = "fotos-shell-v5";
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(SHELL).then((c) => c.addAll(["/", "/style.css", "/app.js", "/layout.js", "/thumbhash.js", "/icon.svg", "/icon-180.png"])));
+  e.waitUntil(caches.open(SHELL).then((c) => c.addAll(["/", "/style.css", "/app.js", "/layout.js", "/thumbhash.js", "/i18n.js", "/icon.svg", "/icon-180.png"])));
   self.skipWaiting();
 });
 self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));

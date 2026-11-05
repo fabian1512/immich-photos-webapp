@@ -9,7 +9,7 @@ a map, people and collections.
 > only to describe the visual inspiration. No Apple assets are included — the icon is original.
 
 No build step, no dependencies: plain HTML/CSS/JS plus a tiny Node proxy server.
-The user interface is currently **German** only.
+The interface is available in **English and German**, and it is easy to [add your own language](CONTRIBUTING.md#adding-or-improving-a-translation).
 
 ## Features
 
@@ -22,6 +22,7 @@ The user interface is currently **German** only.
 - **Selection mode**: favorite, add to album, download (ZIP), move to trash (with confirmation)
 - Partner sharing aware (photos shared with you appear in years/months)
 - Installable as a PWA over HTTPS (icon included)
+- **Translatable:** English and German included; a new language is a single JSON file (see below)
 
 ## Requirements
 
@@ -37,19 +38,40 @@ IMMICH_URL=http://your-immich-host:2283 node server.mjs   # http://localhost:808
 The server serves `public/` and proxies `/api` to Immich, so the browser talks to a single origin
 (no CORS setup needed, cookies just work). Log in with your normal Immich account.
 
-### Docker (next to Immich)
+### Docker (recommended)
+
+A ready-made multi-arch image (amd64, arm64) is published to the GitHub Container Registry:
 
 ```sh
-docker compose up -d --build     # http://<host>:8090
+docker run -d --name immich-photos-web -p 8090:8080 \
+  -e IMMICH_URL=http://your-immich-host:2283 \
+  ghcr.io/fabian1512/immich-apple-photos-webapp:latest        # http://<host>:8090
 ```
 
-`docker-compose.yml` joins Immich's Docker network (`immich_default` by default) and reaches it at
-`http://immich_server:2283`. Override with `IMMICH_URL`, `IMMICH_NETWORK`, `PUBLIC_PORT` (see `.env.example`).
+Or with Docker Compose next to Immich — `docker-compose.yml` joins Immich's Docker network
+(`immich_default` by default) and reaches it at `http://immich_server:2283`:
+
+```sh
+docker compose up -d             # http://<host>:8090
+```
+
+Override with `IMMICH_URL`, `IMMICH_NETWORK`, `PUBLIC_PORT` (see `.env.example`). To build the image from
+this checkout instead: `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`.
+Image tags: `latest`, `0.1.0`, `0.1`.
 
 ### Deploy script
 
 `deploy.sh` runs the checks, copies the app to a server over SSH, starts the container and tests `/healthz`.
 Copy `.env.example` to `.env` and set `DEPLOY_HOST` (and optionally `DEPLOY_KEY`, `DEPLOY_DIR`), then run `./deploy.sh`.
+
+## Languages and translations
+
+English and German are included. The app picks the language from the browser and offers a language picker
+(bottom of the sidebar and on the login page). Missing texts fall back to English.
+
+To add a language, copy `public/locales/en.json` to `public/locales/<code>.json`, translate the values and open a
+pull request — no code changes needed. Details and rules: [CONTRIBUTING.md](CONTRIBUTING.md).
+Not comfortable with pull requests? Open a [translation issue](../../issues/new?template=translation.yml).
 
 ## Tests
 
@@ -57,7 +79,8 @@ Copy `.env.example` to `.env` and set `DEPLOY_HOST` (and optionally `DEPLOY_KEY`
 npm test        # or: node --test test/*.test.mjs
 ```
 
-Covers the grid layout maths and the ThumbHash decoder.
+Covers the grid layout maths, the ThumbHash decoder and the translation files (every key used in the code
+exists, no unknown keys or placeholders in translations).
 
 ## Layout of the repository
 
@@ -67,8 +90,10 @@ Covers the grid layout maths and the ThumbHash decoder.
 | `public/app.js` | UI, Immich calls, virtualized grid, map, viewer |
 | `public/layout.js` | pure row-layout algorithm (unit-tested) |
 | `public/thumbhash.js` | ThumbHash decoder (see `THIRD-PARTY.md`) |
+| `public/i18n.js`, `public/locales/*.json` | translation layer and language files |
 | `public/sw.js`, `manifest.webmanifest` | PWA shell cache and manifest |
 | `Dockerfile`, `docker-compose.yml`, `deploy.sh` | deployment |
+| `.github/workflows/` | CI (tests) and Docker image publishing on version tags |
 
 ## Good to know
 

@@ -1,0 +1,105 @@
+{
+  "_meta.name": "Deutsch",
+  "_meta.dir": "ltr",
+
+  "app.name": "Fotos",
+
+  "nav.library": "Mediathek",
+  "nav.collections": "Sammlungen",
+  "nav.favorites": "Favoriten",
+  "nav.map": "Karte",
+  "nav.videos": "Videos",
+  "nav.people": "Personen",
+  "nav.allAlbums": "Alle Alben",
+  "nav.albums": "Alben",
+  "nav.live": "Live Photos",
+  "nav.logout": "Abmelden",
+
+  "search.placeholder": "Suchen, z. B. „Hund am Strand“",
+  "search.aria": "Suchen",
+  "search.title": "Suche: {q}",
+  "search.fallback": "Intelligente Suche nicht verfügbar – suche nach Dateinamen",
+
+  "login.email": "E-Mail",
+  "login.password": "Passwort",
+  "login.submit": "Anmelden",
+  "login.wrong": "E-Mail oder Passwort falsch",
+  "login.error": "Fehler {status}",
+  "login.expired": "Sitzung abgelaufen – bitte neu anmelden",
+  "login.language": "Sprache",
+
+  "seg.years": "Jahre",
+  "seg.months": "Monate",
+  "seg.all": "Alle Fotos",
+  "zoom.out": "Kleiner",
+  "zoom.in": "Größer",
+
+  "common.back": "Zurück",
+  "common.close": "Schließen",
+  "common.cancel": "Abbrechen",
+  "common.loading": "Lade …",
+  "common.photo": "Foto",
+
+  "error.generic": "Fehler: {message}",
+  "error.unreachable": "Server nicht erreichbar",
+
+  "empty.photos": "Keine Fotos",
+  "empty.photosWithLocation": "Keine Fotos mit Ortsangabe",
+  "empty.albums": "Keine Alben vorhanden.",
+  "empty.retry": "Erneut versuchen",
+
+  "count.items.one": "{n} Objekt",
+  "count.items.other": "{n} Objekte",
+
+  "select.start": "Auswählen",
+  "select.done": "Fertig",
+  "select.count": "{count} ausgewählt",
+  "select.favorite": "♥ Favorit",
+  "select.album": "＋ Album",
+  "select.download": "⬇ Laden",
+  "select.delete": "🗑 Löschen",
+
+  "actions.deleteConfirm.one": "Dieses Objekt in den Papierkorb verschieben?\n(Immich löscht es nach der eingestellten Frist endgültig.)",
+  "actions.deleteConfirm.other": "{count} Objekte in den Papierkorb verschieben?\n(Immich löscht sie nach der eingestellten Frist endgültig.)",
+  "actions.deleted": "{count} in den Papierkorb verschoben",
+  "actions.archive": "Archiv wird erstellt …",
+
+  "albums.addTitle": "Zu Album hinzufügen",
+  "albums.added": "{count} zu „{album}“ hinzugefügt",
+  "albums.addedDup.one": "{added} zu „{album}“ hinzugefügt, {count} war schon enthalten",
+  "albums.addedDup.other": "{added} zu „{album}“ hinzugefügt, {count} waren schon enthalten",
+
+  "people.unnamed": "Unbenannt",
+  "people.more": "Mehr anzeigen",
+
+  "collections.mediaTypes": "Medientypen",
+  "collections.places": "Orte",
+  "collections.showAll": "Alle anzeigen",
+
+  "map.placeTitle": "Ort auf der Karte",
+
+  "viewer.favorite": "Favorit",
+  "viewer.fullscreen": "Vollbild (f)",
+  "viewer.info": "Info",
+  "viewer.download": "Herunterladen",
+  "viewer.delete": "Löschen",
+  "viewer.prev": "Zurück",
+  "viewer.next": "Weiter",
+  "viewer.noPreview": "Keine Vorschau verfügbar",
+
+  "info.date": "Datum",
+  "info.size": "Größe",
+  "info.resolution": "Auflösung",
+  "info.resolutionValue": "{w} × {h} px ({mp} MP)",
+  "info.camera": "Kamera",
+  "info.lens": "Objektiv",
+  "info.exposure": "Belichtung",
+  "info.place": "Ort",
+  "info.coordinates": "Koordinaten",
+  "info.description": "Beschreibung",
+  "info.owner": "Besitzer",
+  "info.type": "Typ",
+
+  "bytes.mb": "{n} MB",
+  "bytes.kb": "{n} KB"
+}
