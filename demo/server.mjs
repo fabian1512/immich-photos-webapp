@@ -75,7 +75,34 @@ const api = http.createServer(async (req, res) => {
   if (p === "/search/cities") {
     return json(res, CITIES.map((c, i) => assets.find((a) => a.city === i)).filter(Boolean).map((a) => asDto(a)));
   }
-  if (p === "/people") return json(res, { total: PEOPLE.length, hidden: 0, hasNextPage: false, people: PEOPLE.map((x) => ({ id: x.id, name: x.name, isHidden: false })) });
+  // ---- people editing (in memory only) ----
+  const dto = (x) => ({ id: x.id, name: x.name, birthDate: x.birthDate || null, isHidden: !!x.isHidden, isFavorite: !!x.isFavorite });
+  const live = () => PEOPLE.filter((x) => !x.removed);
+  if (p === "/people" && m === "GET") {
+    const wh = q.get("withHidden") === "true", list = live().filter((x) => wh || !x.isHidden).sort((a, b) => (!!b.isFavorite - !!a.isFavorite) || (!!b.name - !!a.name));
+    return json(res, { total: list.length, hidden: live().filter((x) => x.isHidden).length, hasNextPage: false, people: list.map(dto) });
+  }
+  if (p === "/people" && m === "POST") { const b = await readBody(req); const x = { id: "p" + PEOPLE.length, name: b.name || "" }; PEOPLE.push(x); return json(res, dto(x)); }
+  if ((mt = p.match(/^\/people\/([^/]+)\/merge$/)) && m === "POST") {
+    const b = await readBody(req), to = PEOPLE.findIndex((x) => x.id === mt[1]);
+    for (const id of b.ids || []) { const i = PEOPLE.findIndex((x) => x.id === id); if (i < 0) continue; PEOPLE[i].removed = true; for (const a of assets) if (a.person === i) a.person = to; }
+    return json(res, (b.ids || []).map((id) => ({ id, success: true })));
+  }
+  if ((mt = p.match(/^\/people\/([^/]+)$/)) && ["GET", "PUT", "DELETE"].includes(m)) {
+    const i = PEOPLE.findIndex((x) => x.id === mt[1]); if (i < 0) return json(res, { message: "Not found" }, 404);
+    if (m === "PUT") { const b = await readBody(req); for (const k of ["name", "birthDate", "isHidden", "isFavorite"]) if (k in b) PEOPLE[i][k] = b[k]; }
+    if (m === "DELETE") { await readBody(req); PEOPLE[i].removed = true; for (const a of assets) if (a.person === i) a.person = -1; res.writeHead(204); return res.end(); }
+    return json(res, dto(PEOPLE[i]));
+  }
+  if (p === "/faces" && m === "GET") {
+    const a = byId.get(q.get("id")); if (!a || a.person < 0) return json(res, []);
+    return json(res, [{ id: "f-" + a.id, imageWidth: 1000, imageHeight: 750, boundingBoxX1: 380, boundingBoxX2: 620, boundingBoxY1: 220, boundingBoxY2: 460, person: dto(PEOPLE[a.person]) }]);
+  }
+  if ((mt = p.match(/^\/faces\/([^/]+)$/)) && ["PUT", "DELETE"].includes(m)) {
+    const b = await readBody(req), a = byId.get(String(b.id || mt[1]).replace(/^f-/, ""));
+    if (a) a.person = m === "PUT" ? PEOPLE.findIndex((x) => x.id === mt[1]) : -1;
+    res.writeHead(204); return res.end();
+  }
   if ((mt = p.match(/^\/people\/([^/]+)\/thumbnail$/))) return svg(res, avatar(mt[1]));
   if (p === "/map/markers") {
     const marks = assets.filter((a) => a.lat != null).filter((a, i) => i % 3 === 0).map((a) => ({ id: a.id, lat: a.lat, lon: a.lon, city: CITIES[a.city][0], state: null, country: CITIES[a.city][1] }));

@@ -209,3 +209,25 @@ nav.sub{padding-left:18px}
 nav.sub.hidden{display:none}
 nav .rowlabel svg{width:20px;height:20px;flex:none;fill:none;stroke:var(--accent);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 @media (max-width:720px),(pointer:coarse) and (max-height:500px){.selbar{bottom:calc(78px + env(safe-area-inset-bottom))}}
+
+/* People editing */
+.fld{display:flex;flex-direction:column;gap:4px;margin:10px 0;font-size:13px;color:var(--dim)}
+.fld input,.dlg-input{background:var(--bg2);color:var(--text);border:0;border-radius:9px;padding:9px 12px;font:inherit;font-size:15px}
+.dlg-input{width:100%;box-sizing:border-box;margin-bottom:8px}
+.chk{display:flex;gap:10px;align-items:center;margin:8px 0}
+.dlg-row{display:flex;gap:8px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap}
+.dlg .dim,.dim{color:var(--dim);font-size:13px}
+.pill.primary{background:var(--accent);color:#fff}
+.pill.danger{color:#ff453a}
+.people-bar{padding:12px 24px 0;display:flex;justify-content:flex-end}
+.person.is-hidden{opacity:.45}
+.faces h5{margin:18px 0 8px;font-size:13px;color:var(--dim);font-weight:600}
+.face{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+.face-crop{width:44px;height:44px;border-radius:50%;flex:none;background-color:var(--bg2);background-repeat:no-repeat}
+.face-info{min-width:0;flex:1}
+.face-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.face-acts{display:flex;gap:6px;margin-top:3px;flex-wrap:wrap}
+.face-acts button{background:var(--bg2);color:var(--text);border-radius:999px;padding:3px 10px;font-size:12px}
+.face-acts button.danger{color:#ff453a}
+.viewer .face-acts button{position:static;width:auto;height:auto;font-size:12px;z-index:auto;background:var(--bg2);color:var(--text);padding:3px 10px}
+.viewer .face-acts button.danger{color:#ff453a}

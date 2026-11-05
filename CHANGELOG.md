@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Grouped sidebar and floating mobile tab bar, pinch / zoom steps through years, months and all photos
+- People editing: name, birthday, favorite, hidden, merge, delete; faces in the viewer info panel (assign, use as cover, remove)
+- People keep Immich's order; compose file for running on a different machine than Immich
+
 ## 0.1.1
 
 - Project renamed to **immich-photos-webapp** (the name no longer contains a third-party trademark).

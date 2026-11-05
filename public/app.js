@@ -378,7 +378,8 @@ $("#selDl").onclick = guard(async () => downloadItems(selectedItems()));
 $("#selDel").onclick = guard(async () => { if (await deleteItems(selectedItems())) exitSelect(); });
 
 // ---------- Ansichten ----------
-function setHeader(title, { back = false, seg = false, zoom = false, select = false } = {}) {
+function setHeader(title, { back = false, seg = false, zoom = false, select = false, edit = false } = {}) {
+  $("#personEdit").classList.toggle("hidden", !edit);
   $("#tTitle").textContent = title; $("#tDate").textContent = "";
   $("#back").classList.toggle("hidden", !back);
   $("#seg").classList.toggle("hidden", !seg);
@@ -592,16 +593,17 @@ function personCard(p) {
   b.onclick = () => (location.hash = `#/person/${p.id}/${encodeURIComponent(p.name || "Person")}`); return b;
 }
 // Keep the order the Immich API returns: favorites first, then named people, then by number of photos.
-async function showPeople() {
+async function showPeople(withHidden = false) {
   resetView(); setHeader(tr("nav.people"));
-  const wrap = el("div", "people"); $("#content").append(wrap);
+  const bar = el("div", "people-bar"), toggle = el("button", "pill", withHidden ? tr("people.hideHidden") : tr("people.showHidden"));
+  toggle.onclick = () => showPeople(!withHidden); bar.append(toggle);
+  const wrap = el("div", "people"); $("#content").append(bar, wrap);
   const token = state.overviewToken; let page = 1, more = null;
   const load = async () => {
     try {
-      const r = await api(`/people?withHidden=false&size=120&page=${page}`);
+      const r = await api(`/people?withHidden=${withHidden}&size=120&page=${page}`);
       if (token !== state.overviewToken) return;
-      // within one page: named people first
-      for (const p of r.people) wrap.append(personCard(p));
+      for (const p of r.people) { const c = personCard(p); if (p.isHidden) c.classList.add("is-hidden"); wrap.append(c); }
       if (more) more.remove(); more = null;
       if (r.hasNextPage) { page++; more = el("button", "pill more", tr("people.more")); more.onclick = load; $("#content").append(more); }
       if (page === 1 && !r.people.length) $("#empty").classList.remove("hidden");
@@ -614,6 +616,126 @@ function showPerson(id, name) {
     back: true,
     makeFeed: () => new BucketFeed({ personId: id, order: "desc" }, { fallback: { filters: { personIds: [id], visibility: "timeline" }, opts: {} } }),
   });
+  state.person = { id, name }; $("#personEdit").classList.remove("hidden");
+}
+
+// ---------- Edit people (name, birthday, favorite, hidden, merge, delete, faces) ----------
+function modal(title, build) {
+  return new Promise((resolve) => {
+    const d = el("dialog", "dlg"); d.append(el("h3", null, title));
+    build(d, (v) => { resolve(v); d.close(); });
+    d.onclose = () => { resolve(null); d.remove(); };
+    document.body.append(d); d.showModal();
+  });
+}
+const field = (label, input) => { const l = el("label", "fld"); l.append(el("span", null, label), input); return l; };
+const putPerson = (id, body) => api(`/people/${id}`, { method: "PUT", body: JSON.stringify(body) });
+async function allPeople() {
+  const out = []; for (let page = 1; page <= 20; page++) {
+    const r = await api(`/people?withHidden=true&size=500&page=${page}`); out.push(...r.people); if (!r.hasNextPage) break;
+  }
+  return out;
+}
+// Choose a person from a searchable list; "New person" returns { create: name }.
+async function pickPerson({ exclude = "", allowNew = false } = {}) {
+  const people = (await allPeople()).filter((p) => p.id !== exclude);
+  return modal(tr("people.choose"), (d, done) => {
+    const q = el("input"); q.type = "search"; q.placeholder = tr("people.search"); q.className = "dlg-input";
+    const list = el("div", "dlg-list");
+    const draw = () => {
+      const t = q.value.trim().toLowerCase(); list.replaceChildren();
+      if (allowNew && t) { const b = el("button", null, tr("people.createNamed", { name: q.value.trim() })); b.onclick = () => done({ create: q.value.trim() }); list.append(b); }
+      for (const p of people.filter((p) => (p.name || "").toLowerCase().includes(t) && (t || p.name)).slice(0, 80)) {
+        const b = el("button"); b.append(personAvatar(p.id), el("span", null, p.name || tr("people.unnamed"))); b.onclick = () => done(p); list.append(b);
+      }
+      if (!list.children.length) list.append(el("p", "dim", tr("people.none")));
+    };
+    q.oninput = draw; draw();
+    const c = el("button", "pill", tr("common.cancel")); c.onclick = () => done(null);
+    d.append(q, list, c); q.focus();
+  });
+}
+async function editPerson() {
+  const cur = state.person; if (!cur) return;
+  const p = await api(`/people/${cur.id}`);
+  const name = el("input"), birth = el("input"), fav = el("input"), hid = el("input");
+  name.value = p.name || ""; birth.type = "date"; birth.value = p.birthDate || ""; birth.max = new Date().toISOString().slice(0, 10);
+  fav.type = "checkbox"; fav.checked = !!p.isFavorite; hid.type = "checkbox"; hid.checked = !!p.isHidden;
+  const res = await modal(tr("people.editTitle"), (d, done) => {
+    const row = (label, input) => { const l = el("label", "chk"); l.append(input, el("span", null, label)); return l; };
+    const merge = el("button", "pill", tr("people.merge")), del = el("button", "pill danger", tr("people.delete"));
+    merge.onclick = () => done({ merge: true }); del.onclick = () => done({ del: true });
+    const save = el("button", "pill primary", tr("common.save")), cancel = el("button", "pill", tr("common.cancel"));
+    save.onclick = () => done({ save: true }); cancel.onclick = () => done(null);
+    d.onkeydown = (e) => { if (e.key === "Enter" && e.target === name) done({ save: true }); };
+    d.append(field(tr("people.name"), name), field(tr("people.birthday"), birth), row(tr("people.favorite"), fav), row(tr("people.hidden"), hid),
+      el("p", "dim", tr("people.coverHint")), el("div", "dlg-row", ""), el("div", "dlg-row"));
+    d.children[d.children.length - 2].append(merge, del); d.lastChild.append(cancel, save);
+  });
+  if (!res) return;
+  if (res.merge) {
+    const other = await pickPerson({ exclude: cur.id }); if (!other || other.create) return;
+    if (!confirm(tr("people.mergeConfirm", { from: other.name || tr("people.unnamed"), to: cur.name }))) return;
+    await api(`/people/${cur.id}/merge`, { method: "POST", body: JSON.stringify({ ids: [other.id] }) });
+    toast(tr("people.merged")); return route();
+  }
+  if (res.del) {
+    if (!confirm(tr("people.deleteConfirm", { name: cur.name }))) return;
+    await api(`/people/${cur.id}`, { method: "DELETE", body: JSON.stringify({}) });
+    toast(tr("people.deleted")); location.hash = "#/people"; return;
+  }
+  const n = name.value.trim();
+  await putPerson(cur.id, { name: n, birthDate: birth.value || null, isFavorite: fav.checked, isHidden: hid.checked });
+  toast(tr("people.saved"));
+  if (hid.checked) { location.hash = "#/people"; return; }
+  cur.name = n || tr("people.unnamed"); $("#tTitle").textContent = cur.name;
+  history.replaceState(null, "", `#/person/${cur.id}/${encodeURIComponent(cur.name)}`);
+}
+$("#personEdit").onclick = guard(editPerson);
+
+// Faces of the photo in the info panel: assign to a person, use as cover, remove.
+const faceCrop = (a, f) => {
+  const side = Math.max(f.boundingBoxX2 - f.boundingBoxX1, f.boundingBoxY2 - f.boundingBoxY1) * 1.3, k = 44 / side;
+  const cx = (f.boundingBoxX1 + f.boundingBoxX2) / 2, cy = (f.boundingBoxY1 + f.boundingBoxY2) / 2;
+  const d = el("span", "face-crop");
+  d.style.backgroundImage = `url(${img(a.id, "preview")})`;
+  d.style.backgroundSize = `${f.imageWidth * k}px ${f.imageHeight * k}px`;
+  d.style.backgroundPosition = `${-(cx - side / 2) * k}px ${-(cy - side / 2) * k}px`;
+  return d;
+};
+async function loadFaces(a, box) {
+  let faces; try { faces = await api(`/faces?id=${a.id}`); } catch { return; }
+  if (curItem()?.id !== a.id) return;
+  box.replaceChildren();
+  if (!faces.length) return;
+  box.append(el("h5", null, tr("people.inPhoto")));
+  for (const f of faces) {
+    const row = el("div", "face"), who = f.person;
+    const label = el("div", "face-name", who ? (who.name || tr("people.unnamed")) : tr("people.unknown"));
+    if (who) { label.style.cursor = "pointer"; label.onclick = () => { closeViewer(); location.hash = `#/person/${who.id}/${encodeURIComponent(who.name || "Person")}`; }; }
+    const acts = el("div", "face-acts");
+    const assign = el("button", null, who ? tr("people.change") : tr("people.assign"));
+    assign.onclick = guard(async () => {
+      const pick = await pickPerson({ exclude: who ? who.id : "", allowNew: true }); if (!pick) return;
+      const target = pick.create ? await api("/people", { method: "POST", body: JSON.stringify({ name: pick.create }) }) : pick;
+      await api(`/faces/${target.id}`, { method: "PUT", body: JSON.stringify({ id: f.id }) });
+      toast(tr("people.assigned", { name: target.name || tr("people.unnamed") })); loadFaces(a, box);
+    });
+    acts.append(assign);
+    if (who) {
+      const cover = el("button", null, tr("people.cover"));
+      cover.onclick = guard(async () => { await putPerson(who.id, { featureFaceAssetId: a.id }); toast(tr("people.coverSet")); });
+      acts.append(cover);
+    }
+    const rm = el("button", "danger", "✕"); rm.title = tr("people.removeFace"); rm.setAttribute("aria-label", tr("people.removeFace"));
+    rm.onclick = guard(async () => {
+      if (!confirm(tr("people.removeFaceConfirm"))) return;
+      await api(`/faces/${f.id}`, { method: "DELETE", body: JSON.stringify({ force: true }) }); loadFaces(a, box);
+    });
+    acts.append(rm);
+    const info = el("div", "face-info"); info.append(label, acts);
+    row.append(faceCrop(a, f), info); box.append(row);
+  }
 }
 
 // ---------- Sammlungen ----------
@@ -905,7 +1027,9 @@ async function showInfoPanel() {
   add(tr("info.description"), x.description);
   add(tr("info.owner"), info.owner && info.owner.name);
   add(tr("info.type"), info.originalMimeType);
-  panel.replaceChildren(el("h4", null, info.originalFileName || a.originalFileName || ""), dl);
+  const facesBox = el("div", "faces");
+  panel.replaceChildren(el("h4", null, info.originalFileName || a.originalFileName || ""), dl, facesBox);
+  loadFaces(a, facesBox);
 }
 $("#vClose").onclick = closeViewer; $("#vPrev").onclick = () => step(-1); $("#vNext").onclick = () => step(1);
 $("#vInfoBtn").onclick = () => ($("#vPanel").classList.contains("hidden") ? showInfoPanel() : $("#vPanel").classList.add("hidden"));

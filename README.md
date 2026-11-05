@@ -20,7 +20,7 @@ The interface is available in **English and German**, and it is easy to [add you
 - Fast loading: one request per month through Immich's timeline API, next month prefetched,
   **virtualized grid** (only visible rows exist in the DOM), blurred **ThumbHash** placeholders
 - Favorites, Videos, Live Photos, Albums, **Collections** (media types, people, places, albums)
-- **Map** with photo clusters (OpenStreetMap tiles), **People**, **Search** (Immich smart search, filename fallback)
+- **Map** with photo clusters (OpenStreetMap tiles), **People** (rename, birthday, favorite, hide, merge, delete; assign faces and set cover photos in the viewer), **Search** (Immich smart search, filename fallback)
 - **Viewer**: zoom/pan/swipe, info panel (EXIF), favorite, download, trash, fullscreen (`f`)
 - **Selection mode**: favorite, add to album, download (ZIP), move to trash (with confirmation)
 - Partner sharing aware (photos shared with you appear in years/months)
