@@ -77,7 +77,7 @@ main{position:relative;overflow-y:auto;height:100%}
   aside.search-open #searchForm{display:block!important}
   #searchInput{font-size:16px}
   .topbar{grid-template-columns:1fr auto;padding:0 12px}
-  .seg,.zoom{display:none!important}
+  .seg{display:none!important}
   .viewer ~ .tabbar,body:has(#viewer:not(.hidden)) .tabbar,body:has(#viewer:not(.hidden)) .search-btn{display:none}
 }
 .overview{padding:0 0 120px}

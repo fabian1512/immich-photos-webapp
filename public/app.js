@@ -808,34 +808,20 @@ $("#searchForm").addEventListener("submit", (e) => {
   if (q) location.hash = "#/search/" + encodeURIComponent(q);
 });
 
-// Pinch (touch): the content is only scaled while the fingers move (cheap), the grid is recalculated once on release.
-// ctrl+wheel (trackpad pinch) steps directly.
+// Pinch (touch) or ctrl+wheel (trackpad pinch) on the library changes the zoom step.
 {
-  const STEP = 1.22; // scale factor that corresponds to one zoom step
-  let d0 = 0, scale = 1;
+  let d0 = 0, busy = false;
   const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
-  const m = $("#main"), c = $("#content"), canZoom = () => $("#zoom") && !$("#zoom").classList.contains("hidden") && $("#viewer").classList.contains("hidden");
-  const reset = () => { c.style.transform = ""; c.style.transformOrigin = ""; c.style.willChange = ""; scale = 1; };
-  m.addEventListener("touchstart", (e) => { if (e.touches.length === 2 && canZoom()) { d0 = dist(e.touches); scale = 1; } }, { passive: true });
+  const m = $("#main");
+  m.addEventListener("touchstart", (e) => { if (e.touches.length === 2) d0 = dist(e.touches); }, { passive: true });
   m.addEventListener("touchmove", (e) => {
-    if (e.touches.length !== 2 || !d0) return;
-    const t = e.touches, r = c.getBoundingClientRect();
-    // limit the scale to what can be reached from the current step
-    const up = maxLevel() - level(), down = level();
-    scale = Math.min(STEP ** (up + 0.5), Math.max(STEP ** -(down + 0.5), dist(t) / d0));
-    c.style.willChange = "transform";
-    c.style.transformOrigin = `${(t[0].clientX + t[1].clientX) / 2 - r.left}px ${(t[0].clientY + t[1].clientY) / 2 - r.top}px`;
-    c.style.transform = `scale(${scale})`;
+    if (e.touches.length !== 2 || !d0 || !$("#viewer").classList.contains("hidden")) return;
+    const r = dist(e.touches) / d0;
+    if (r > 1.14) { zoom(1); d0 = dist(e.touches); } else if (r < 0.88) { zoom(-1); d0 = dist(e.touches); }
   }, { passive: true });
-  const end = (e) => {
-    if (e.touches.length >= 2 || !d0) return;
-    const steps = Math.round(Math.log(scale) / Math.log(STEP)); d0 = 0;
-    reset(); if (steps) zoom(steps);
-  };
-  m.addEventListener("touchend", end, { passive: true }); m.addEventListener("touchcancel", end, { passive: true });
-  let busy = false;
+  m.addEventListener("touchend", () => { d0 = 0; }, { passive: true });
   m.addEventListener("wheel", (e) => {
-    if (!e.ctrlKey || !canZoom()) return;
+    if (!e.ctrlKey || !$("#zoom") || $("#zoom").classList.contains("hidden")) return;
     e.preventDefault();
     if (busy) return; busy = true; setTimeout(() => (busy = false), 350);
     zoom(e.deltaY < 0 ? 1 : -1);
