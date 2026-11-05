@@ -627,7 +627,8 @@ async function showPeople(withHidden = false) {
 function showPerson(id, name) {
   showFeed({ personIds: [id], visibility: "timeline" }, name, {
     back: true,
-    makeFeed: () => new BucketFeed({ personId: id, order: "desc" }, { fallback: { filters: { personIds: [id], visibility: "timeline" }, opts: {} } }),
+    // userId + withPartners: people shared by another account (e.g. the family library) own their photos there
+    makeFeed: () => new BucketFeed({ personId: id, order: "desc" }, { prepare: async (f) => { if (!state.userId) state.userId = (await api("/users/me")).id; f.params = { personId: id, order: "desc", visibility: "timeline", userId: state.userId, withPartners: "true" }; }, fallback: { filters: { personIds: [id], visibility: "timeline" }, opts: {} } }),
   });
   state.person = { id, name }; $("#personEdit").classList.remove("hidden");
 }
