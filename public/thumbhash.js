@@ -65,7 +65,7 @@
         c.width = w; c.height = h; c.getContext("2d").putImageData(new ImageData(rgba, w, h), 0, 0);
         url = c.toDataURL();
       }
-    } catch { /* ungültiger Hash: dann eben ohne Vorschau */ }
+    } catch { /* invalid hash: simply no placeholder */ }
     if (urlCache.size > 5000) urlCache.clear();
     urlCache.set(b64, url);
     return url;

@@ -94,7 +94,7 @@ class Feed {
       let res;
       try { res = await api(this.endpoint, { method: "POST", body: JSON.stringify(this.body()) }); }
       catch (e) {
-        // Intelligente Suche nicht verfügbar (z. B. Machine-Learning-Dienst aus): nach Dateinamen suchen.
+        // Smart search unavailable (e.g. machine-learning service off): search by file name instead.
         if (this.fallback && this.page === 1 && e.message !== "401") {
           ({ endpoint: this.endpoint, filters: this.filters } = this.fallback); this.fallback = null; this.fellBack = true;
           res = await api(this.endpoint, { method: "POST", body: JSON.stringify(this.body()) });
@@ -126,8 +126,8 @@ function prepare(a) {
   return a;
 }
 
-// Spaltenorientierte Antwort von /timeline/bucket (so lädt auch die Immich-Weboberfläche):
-// ein Request pro Monat statt vieler Seiten mit vollständigen Objekten.
+// Column-oriented response of /timeline/bucket (this is how the Immich web UI loads photos):
+// one request per month instead of many pages of full asset objects.
 function fromBucket(d) {
   const out = [], n = (d.id || []).length;
   for (let i = 0; i < n; i++) {
@@ -145,7 +145,7 @@ function fromBucket(d) {
   return out;
 }
 class BucketFeed {
-  /** params: Abfrageparameter für Immich; buckets: Liste der Monate (optional); fallback: { filters, opts } für die Suche */
+  /** params: query parameters for Immich; buckets: list of months (optional); fallback: { filters, opts } for the search API */
   constructor(params, { buckets = null, fallback = null, minBatch = 150, prepare = null } = {}) {
     Object.assign(this, { params, queue: buckets && buckets.slice(), fallback, minBatch, prepare, done: false, loading: false, items: [], next: null, delegate: null });
   }
@@ -163,13 +163,13 @@ class BucketFeed {
         const got = await (this.next && this.next.raw === raw ? this.next.p : this.fetchBucket(raw));
         this.next = null;
         this.items.push(...got);
-        // Den nächsten Monat schon im Hintergrund holen, während der aktuelle gezeichnet wird.
+        // Prefetch the next month in the background while the current one is being drawn.
         if (this.queue.length) { const nr = this.queue[0]; this.next = { raw: nr, p: this.fetchBucket(nr) }; this.next.p.catch(() => {}); }
       }
       if (!this.queue.length) this.done = true;
       return this.items.slice(start);
     } catch (e) {
-      // Interner Endpunkt nicht verfügbar (z. B. nach einem Immich-Update): auf die stabile Suche ausweichen.
+      // Internal endpoint unavailable (e.g. after an Immich update): fall back to the stable search API.
       if (this.fallback && !this.items.length && e.message !== "401") {
         this.delegate = new Feed(this.fallback.filters, this.fallback.opts); this.delegate.items = this.items; this.fellBack = "bucket";
         const r = await this.delegate.more(); this.done = this.delegate.done; return r;
@@ -213,7 +213,7 @@ function gridAppend(items) {
   grid.el.style.height = Layout.totalHeight(grid.rows) + "px";
   renderVisible(); updateDate();
 }
-// Alles neu berechnen (Zoom, Fenstergröße, gelöschte Fotos) und die Stelle im Blick behalten.
+// Recompute everything (zoom, window size, deleted photos) and keep the current position in view.
 function gridRelayout() {
   if (!grid.el || !state.feed) return;
   const main = $("#main"), viewTop = main.scrollTop - grid.el.offsetTop;
@@ -232,10 +232,10 @@ function makeTile(a, idx) {
   t.dataset.id = a.id; t.dataset.idx = idx;
   t.setAttribute("aria-label", a.originalFileName || tr("common.photo"));
   const i = el("img"); i.decoding = "async"; i.alt = "";
-  const hash = ThumbHash.toDataURL(a.thumbhash); // unscharfe Vorschau, bis das echte Bild da ist
+  const hash = ThumbHash.toDataURL(a.thumbhash); // blurred preview until the real image has loaded
   if (hash) t.style.backgroundImage = `url(${hash})`;
   i.onload = () => i.classList.add("loaded");
-  i.onerror = () => t.classList.add("missing"); // Vorschau fehlt auf dem Server: Platzhalter statt Lücke
+  i.onerror = () => t.classList.add("missing"); // thumbnail missing on the server: show a placeholder instead of a gap
   i.src = img(a.id, ZOOMS[state.zoom] > 150 ? "preview" : "thumbnail");
   t.append(i, el("span", "check"));
   if (a.type === "VIDEO") { const s = parseDuration(a.duration); t.append(el("span", "badge b-dur", s ? fmtDuration(s) : "▶")); }
@@ -268,7 +268,7 @@ function renderVisible() {
   const last = i - 1;
   for (const [k, node] of grid.rendered) if (k < first || k > last) { node.remove(); grid.rendered.delete(k); }
 }
-// Klick auf eine Kachel (Delegation, die Kacheln selbst haben keine eigenen Handler)
+// Click on a tile (event delegation; the tiles themselves have no handlers)
 $("#content").addEventListener("click", (e) => {
   const t = e.target.closest(".tile"); if (!t || !state.feed) return;
   const a = state.feed.items[+t.dataset.idx]; if (!a) return;
@@ -291,7 +291,7 @@ $("#main").addEventListener("scroll", () => { renderVisible(); updateDate(); }, 
 
 async function loadMore() {
   const f = state.feed;
-  if (!f || f.loading || f.done) return; // nie rekursiv
+  if (!f || f.loading || f.done) return; // never recurse
   let failed = false;
   const items = await f.more().catch((e) => { failed = true; if (e.message !== "401") showError(tr("error.generic", { message: e.message })); return []; });
   if (f !== state.feed) return;
@@ -306,7 +306,7 @@ async function loadMore() {
 new IntersectionObserver((en) => { if (en[0].isIntersecting) loadMore(); }, { rootMargin: "800px" }).observe($("#sentinel"));
 let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => state.feed && grid.el && gridRelayout(), 150); });
 
-// ---------- Auswahl und Aktionen ----------
+// ---------- Selection and actions ----------
 function updateSelUI() {
   $("#content").classList.toggle("selecting", state.sel.on);
   $("#selbar").classList.toggle("hidden", !state.sel.on);
@@ -331,7 +331,7 @@ async function setFavorite(items, value) {
 }
 function removeItems(ids) {
   state.feed.items = state.feed.items.filter((a) => !ids.has(a.id));
-  state.buckets = null; // Zahlen der Übersicht sind veraltet
+  state.buckets = null; // the counts of the overview are stale now
   gridRelayout();
   if (!state.feed.items.length) $("#empty").classList.remove("hidden");
 }
@@ -411,7 +411,7 @@ function zoom(d) {
 }
 $("#zOut").onclick = () => zoom(-1); $("#zIn").onclick = () => zoom(1);
 
-// ---------- Mediathek: Jahre / Monate (Übersichtskarten) und Alle Fotos ----------
+// ---------- Library: Years / Months (overview cards) and All Photos ----------
 const coverQueue = { running: 0, waiting: [] };
 function pumpCovers() {
   while (coverQueue.running < 4 && coverQueue.waiting.length) {
@@ -437,10 +437,10 @@ const coverObserver = new IntersectionObserver((entries) => {
 }, { rootMargin: "400px" });
 
 async function loadBuckets() {
-  if (state.buckets && Date.now() - (state.bucketsAt || 0) > 60000) state.buckets = null; // nach 1 Minute neu holen
+  if (state.buckets && Date.now() - (state.bucketsAt || 0) > 60000) state.buckets = null; // reload after 1 minute
   if (!state.buckets) {
-    // Mit userId + withPartners zählt Immich auch Fotos von Partnern (z. B. die Familien-Bibliothek bei Greta) mit,
-    // genauso wie die Suche in "Alle Fotos". Der Endpunkt ist bei Immich als "intern" markiert.
+    // With userId + withPartners Immich also counts photos shared by partners (e.g. a family library),
+    // just like the search used for "All Photos". Immich marks this endpoint as "internal".
     if (!state.userId) state.userId = (await api("/users/me")).id;
     const list = await api(`/timeline/buckets?visibility=timeline&order=desc&userId=${state.userId}&withPartners=true`);
     state.buckets = list.map((b) => {
@@ -500,7 +500,7 @@ function showLibrary(restore) {
   }
 }
 const libParams = () => ({ visibility: "timeline", order: "desc", userId: state.userId, withPartners: "true" });
-// Mediathek-Feed über die Zeitleisten-Schnittstelle (userId + withPartners: Partnerfotos zählen mit, wie in der Suche).
+// Library feed through the timeline API (userId + withPartners: partner photos are included, like in the search).
 const libraryFeed = (buckets, fallbackFilters) => new BucketFeed({}, {
   buckets, fallback: { filters: fallbackFilters, opts: {} },
   prepare: async (f) => { if (!state.userId) state.userId = (await api("/users/me")).id; f.params = libParams(); },
@@ -551,8 +551,8 @@ async function loadSidebarAlbums() {
   return albums;
 }
 
-// Alben bei Änderungen (auch aus anderen Fenstern oder der Immich-Weboberfläche) nachziehen:
-// beim Zurückkehren zum Tab, beim Navigieren und alle 60 Sekunden.
+// Keep albums up to date when they change (also from other windows or the Immich web UI):
+// when the tab regains focus, on navigation and every 60 seconds.
 let albumsBusy = false;
 async function refreshAlbums(force) {
   if (albumsBusy || $("#app").classList.contains("hidden")) return;
@@ -567,7 +567,7 @@ async function refreshAlbums(force) {
       if (name === "albums" || name === "collections") route();
       else if (name === "album") {
         const cur = state.albums.find((a) => a.id === id), old = JSON.parse(before).find((a) => a[0] === id);
-        if (cur && old && cur.assetCount !== old[2]) route(); // Inhalt des geöffneten Albums hat sich geändert
+        if (cur && old && cur.assetCount !== old[2]) route(); // the content of the open album changed
       }
     }
   } catch {} finally { albumsBusy = false; }
@@ -591,7 +591,7 @@ async function showPeople() {
     try {
       const r = await api(`/people?withHidden=false&size=120&page=${page}`);
       if (token !== state.overviewToken) return;
-      // innerhalb einer Seite: benannte zuerst
+      // within one page: named people first
       for (const p of sortPeople(r.people)) wrap.append(personCard(p));
       if (more) more.remove(); more = null;
       if (r.hasNextPage) { page++; more = el("button", "pill more", tr("people.more")); more.onclick = load; $("#content").append(more); }
@@ -638,7 +638,7 @@ async function showCollections() {
   }
 }
 
-// ---------- Karte (eigene schlanke Kartenansicht mit OpenStreetMap-Kacheln) ----------
+// ---------- Map (small built-in map view using OpenStreetMap tiles) ----------
 const WORLD = (z) => 256 * 2 ** z;
 const lon2x = (lon, z) => ((lon + 180) / 360) * WORLD(z);
 const lat2y = (lat, z) => { const r = (Math.max(-85.0511, Math.min(85.0511, lat)) * Math.PI) / 180; return ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * WORLD(z); };
@@ -660,7 +660,7 @@ async function showMap() {
   if (!markers.length) { $("#empty h2").textContent = tr("empty.photosWithLocation"); $("#empty").classList.remove("hidden"); wrap.remove(); $("#main").style.overflow = ""; return; }
   const pts = markers.filter((m) => m.lat != null && m.lon != null);
   let W = wrap.clientWidth, H = wrap.clientHeight;
-  // Startansicht: letzte Position, sonst alle Fotos im Bild
+  // Initial view: last position, otherwise fit all photos
   let view = state.mapView;
   if (!view) {
     const minLat = Math.min(...pts.map((p) => p.lat)), maxLat = Math.max(...pts.map((p) => p.lat)), minLon = Math.min(...pts.map((p) => p.lon)), maxLon = Math.max(...pts.map((p) => p.lon));
@@ -752,7 +752,7 @@ let lastName = "";
 function route() {
   const [, name = "photos", id, title] = location.hash.split("/");
   markActive(); refreshAlbums(false);
-  const restore = lastName === "month" && name === "photos"; // Zurück aus einem Monat: Scrollposition wiederherstellen
+  const restore = lastName === "month" && name === "photos"; // back from a month: restore the scroll position
   lastName = name; state.view = name;
   if (name !== "search") $("#searchInput").value = "";
   if (name === "albums") showAlbums();
@@ -791,14 +791,14 @@ function closeViewer() {
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   vIndex = -1; $("#viewer").classList.remove("immersive"); $("#viewer").classList.add("hidden"); $("#vStage").replaceChildren(); $("#vPanel").classList.add("hidden");
 }
-// Maximieren: echtes Vollbild (wo der Browser es erlaubt, z. B. Mac, PC, iPad), sonst nur alle Bedienelemente ausblenden.
+// Maximize: real fullscreen where the browser allows it (e.g. Mac, PC, iPad), otherwise just hide all controls.
 const setImmersive = (on) => $("#viewer").classList.toggle("immersive", on);
 function toggleFullscreen() {
   const v = $("#viewer");
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   else if (v.classList.contains("immersive")) setImmersive(false);
   else if (v.requestFullscreen) {
-    // Wird Vollbild abgelehnt oder gar nicht umgesetzt (z. B. iPhone, eingebettete Browser), reicht das Ausblenden der Bedienelemente.
+    // If fullscreen is refused or not implemented (e.g. iPhone, embedded browsers), hiding the controls is enough.
     v.requestFullscreen().catch(() => setImmersive(true));
     setTimeout(() => { if (!document.fullscreenElement) setImmersive(true); }, 350);
   } else setImmersive(true);
@@ -830,7 +830,7 @@ function showViewer() {
   $("#vFav").textContent = a.isFavorite ? "♥" : "♡";
   const infoLine = () => $("#vInfo").replaceChildren(el("span", null, `${a.originalFileName || ""}${a._date ? " · " + dateFmt.format(a._date) : ""}`));
   infoLine();
-  if (!a.originalFileName) { // Zeitleisten-Daten enthalten keinen Dateinamen: bei Bedarf nachladen
+  if (!a.originalFileName) { // timeline data contains no file name: load it on demand
     (infoCache.get(a.id) ? Promise.resolve(infoCache.get(a.id)) : api(`/assets/${a.id}`).then((i) => (infoCache.set(a.id, i), i)))
       .then((i) => { a.originalFileName = i.originalFileName || ""; if (curItem() === a) infoLine(); }).catch(() => {});
   }
@@ -874,7 +874,7 @@ addEventListener("keydown", (e) => {
   else if (e.key === "f" || e.key === "F") toggleFullscreen(); else if (e.key === "ArrowLeft") step(-1); else if (e.key === "ArrowRight") step(1);
   else if (e.key === "i") $("#vInfoBtn").click(); else if (e.key === "+" || e.key === "=") zoomAt(innerWidth / 2, innerHeight / 2, 1.4); else if (e.key === "-") zoomAt(innerWidth / 2, innerHeight / 2, 1 / 1.4);
 });
-// Zoomen (Mausrad, Doppelklick, Zwei-Finger-Geste), Verschieben, Wischen zum Blättern
+// Zoom (mouse wheel, double click, two-finger gesture), pan, swipe to navigate
 const stage = $("#vStage"), ptrs = new Map();
 let pinch0 = 0, pinchS = 1, downX = 0, downY = 0, moved = false;
 stage.addEventListener("wheel", (e) => { if (e.target.tagName === "VIDEO") return; e.preventDefault(); zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0018))); }, { passive: false });

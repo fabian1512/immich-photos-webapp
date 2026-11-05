@@ -4,7 +4,7 @@ self.addEventListener("install", (e) => {
   self.skipWaiting();
 });
 self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
-// Nur die App-Hülle cachen (Netz zuerst); API und Bilder gehen immer ans Netz.
+// Cache only the app shell (network first); the API and images always go to the network.
 self.addEventListener("fetch", (e) => {
   const u = new URL(e.request.url);
   if (e.request.method !== "GET" || u.pathname.startsWith("/api/")) return;

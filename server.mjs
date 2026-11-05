@@ -1,5 +1,5 @@
-// Minimaler Server ohne Abhängigkeiten: liefert die Web-App aus und leitet
-// /api an Immich weiter (gleiche Herkunft => keine CORS-Probleme, Cookies gehen).
+// Minimal dependency-free server: serves the web app and forwards
+// /api to Immich (same origin => no CORS problems, cookies just work).
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";

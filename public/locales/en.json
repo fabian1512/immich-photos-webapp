@@ -15,7 +15,7 @@
   "nav.live": "Live Photos",
   "nav.logout": "Sign out",
 
-  "search.placeholder": "Search, e.g. “dog at the beach”",
+  "search.placeholder": "Search, e.g. “beach”",
   "search.aria": "Search",
   "search.title": "Search: {q}",
   "search.fallback": "Smart search is not available – searching by file name",

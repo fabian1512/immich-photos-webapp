@@ -15,7 +15,7 @@
   "nav.live": "Live Photos",
   "nav.logout": "Abmelden",
 
-  "search.placeholder": "Suchen, z. B. „Hund am Strand“",
+  "search.placeholder": "Suchen, z. B. „Strand“",
   "search.aria": "Suchen",
   "search.title": "Suche: {q}",
   "search.fallback": "Intelligente Suche nicht verfügbar – suche nach Dateinamen",

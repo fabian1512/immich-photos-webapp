@@ -8,6 +8,9 @@ a map, people and collections.
 > by the Immich team or by Apple. "Apple" and "Photos" are trademarks of Apple Inc.; they are used here
 > only to describe the visual inspiration. No Apple assets are included — the icon is original.
 
+<p align="center"><img src="docs/screenshots/years.png" alt="Years view with large year cards" width="49%"> <img src="docs/screenshots/all-photos.png" alt="All Photos: justified photo grid" width="49%"></p>
+<sub>Screenshots show the built-in demo mode with generated dummy pictures — no real photos.</sub>
+
 No build step, no dependencies: plain HTML/CSS/JS plus a tiny Node proxy server.
 The interface is available in **English and German**, and it is easy to [add your own language](CONTRIBUTING.md#adding-or-improving-a-translation).
 
@@ -23,6 +26,24 @@ The interface is available in **English and German**, and it is easy to [add you
 - Partner sharing aware (photos shared with you appear in years/months)
 - Installable as a PWA over HTTPS (icon included)
 - **Translatable:** English and German included; a new language is a single JSON file (see below)
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Months](docs/screenshots/months.png) **Months** – cards with cover photo | ![Viewer](docs/screenshots/viewer.png) **Viewer** with info panel |
+| ![Map](docs/screenshots/map.png) **Map** – photo clusters | ![Collections](docs/screenshots/collections.png) **Collections** – people, places, albums |
+| ![Selection](docs/screenshots/selection.png) **Selection mode** | ![Dark mode](docs/screenshots/years-dark.png) **Dark mode** follows the system |
+
+## Try it without Immich
+
+A built-in demo mode starts a tiny fake Immich API with ~13,000 generated dummy photos, albums, people and places:
+
+```sh
+npm run demo        # http://localhost:8081 – sign in with any e-mail and password
+```
+
+It is also how the screenshots above are made (`npm run screenshots`, needs Chrome/Chromium).
 
 ## Requirements
 
@@ -92,6 +113,7 @@ exists, no unknown keys or placeholders in translations).
 | `public/thumbhash.js` | ThumbHash decoder (see `THIRD-PARTY.md`) |
 | `public/i18n.js`, `public/locales/*.json` | translation layer and language files |
 | `public/sw.js`, `manifest.webmanifest` | PWA shell cache and manifest |
+| `demo/` | demo mode: fake Immich API, dummy picture generator, screenshot script |
 | `Dockerfile`, `docker-compose.yml`, `deploy.sh` | deployment |
 | `.github/workflows/` | CI (tests) and Docker image publishing on version tags |
 

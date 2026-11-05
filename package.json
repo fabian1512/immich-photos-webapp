@@ -5,9 +5,13 @@
   "license": "MIT",
   "private": true,
   "type": "commonjs",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node server.mjs",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "demo": "node demo/server.mjs",
+    "screenshots": "node demo/screenshots.mjs"
   }
 }

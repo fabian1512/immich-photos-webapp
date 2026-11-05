@@ -1,15 +1,15 @@
 "use strict";
-// Reine Layout-Rechnung für das Raster (ohne DOM, deshalb testbar).
-// Eine Zeile: { start, end, top, h, full } – start..end-1 sind Indizes in `ratios`.
+// Pure layout maths for the photo grid (no DOM, therefore unit-testable).
+// A row: { start, end, top, h, full } – start..end-1 are indices into `ratios`.
 (function (root) {
   /**
-   * Berechnet Zeilen für Seitenverhältnisse (Breite/Höhe).
-   * Fertige Zeilen bleiben unverändert; nur eine unvollständige letzte Zeile wird neu berechnet.
-   * @param {number[]} ratios  Seitenverhältnisse aller Elemente
-   * @param {number} W         Breite des Rasters in px
-   * @param {number} T         Zielhöhe einer Zeile in px
-   * @param {number} gap       Abstand in px
-   * @param {Array} rows       bisherige Zeilen (wird ergänzt und zurückgegeben)
+   * Computes rows for aspect ratios (width/height).
+   * Finished rows stay untouched; only an incomplete last row is recomputed.
+   * @param {number[]} ratios  aspect ratios of all items
+   * @param {number} W         width of the grid in px
+   * @param {number} T         target row height in px
+   * @param {number} gap       spacing in px
+   * @param {Array} rows       existing rows (extended and returned)
    */
   function layoutRows(ratios, W, T, gap, rows) {
     rows = rows || [];
@@ -35,7 +35,7 @@
 
   const totalHeight = (rows) => (rows.length ? rows[rows.length - 1].top + rows[rows.length - 1].h : 0);
 
-  /** Index der ersten Zeile, die bei y noch sichtbar ist (Zeilenende >= y). */
+  /** Index of the first row that is still visible at y (row end >= y). */
   function rowAt(rows, y) {
     let lo = 0, hi = rows.length - 1;
     if (hi < 0) return -1;

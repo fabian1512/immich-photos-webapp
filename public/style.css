@@ -78,7 +78,7 @@ main{position:relative;overflow-y:auto;height:100%}
 .card-cap b{font-size:17px}.card.big .card-cap b{font-size:30px}
 .card-cap span{font-size:13px;opacity:.85}
 
-/* ---- Raster (virtualisiert: nur sichtbare Zeilen im DOM) ---- */
+/* ---- Grid (virtualized: only visible rows exist in the DOM) ---- */
 .vgrid{position:relative;margin:var(--gap,10px)}
 .vgrid .row{position:absolute;left:0}
 .tile.missing img{display:none}
@@ -91,12 +91,12 @@ main{position:relative;overflow-y:auto;height:100%}
 .tile.sel .check::after{content:"✓";position:absolute;inset:0;display:grid;place-items:center;color:#fff;font-size:14px;font-weight:700}
 .tile.sel img{transform:scale(.92);border-radius:6px}
 .tile img{transition:transform .12s}
-/* ---- Kopfzeile ---- */
+/* ---- Top bar ---- */
 .tb-right{justify-self:end;display:flex;gap:10px;align-items:center}
 .pill{background:var(--bg2);border-radius:999px;padding:7px 16px;font-weight:600}
 .search{padding:2px 2px 8px}
 .search input{width:100%;padding:8px 12px;border-radius:9px;font-size:14px}
-/* ---- Auswahlleiste, Dialog, Hinweis ---- */
+/* ---- Selection bar, dialog, toast ---- */
 .selbar{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:30;display:flex;gap:6px;align-items:center;padding:8px 12px;border-radius:16px;background:var(--bar-bg);backdrop-filter:blur(24px) saturate(1.6);-webkit-backdrop-filter:blur(24px) saturate(1.6);box-shadow:0 8px 30px #0005;border:1px solid var(--line);max-width:calc(100vw - 20px);flex-wrap:wrap;justify-content:center}
 .selbar span{font-weight:600;padding:0 8px}
 .selbar button{background:var(--bg2);border-radius:10px;padding:7px 12px}
@@ -127,13 +127,13 @@ main{position:relative;overflow-y:auto;height:100%}
 .v-panel a{color:var(--accent)}
 @media (max-width:720px){.selbar{bottom:70px}.tb-right .pill{padding:6px 12px}}
 
-/* ---- Unscharfe Vorschau (ThumbHash) ---- */
+/* ---- Blurred placeholder (ThumbHash) ---- */
 .tile{background-size:cover;background-position:center}
 .tile img{opacity:0;transition:opacity .25s ease}
 .tile img.loaded{opacity:1}
 .card{background-size:cover;background-position:center}
 .card img{opacity:0;transition:opacity .3s ease}.card img.loaded{opacity:1}
-/* ---- Kacheln wie in Apple Fotos: Beschriftung oben links ---- */
+/* ---- Cards in the style of Apple Photos: caption at the top left ---- */
 .card-cap{top:0;bottom:auto;padding:16px 18px 44px;background:linear-gradient(#0008,transparent)}
 .card-cap b{font-size:20px;text-shadow:0 1px 6px #0006}
 .overview.years{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:48px;padding:40px 40px 140px}
@@ -142,7 +142,7 @@ main{position:relative;overflow-y:auto;height:100%}
 .overview.years .card.big .card-cap b{font-size:clamp(30px,4vw,54px);line-height:1.1}
 .overview.years .card.big .card-cap span{font-size:15px}
 @media (max-width:720px){.overview.years{gap:20px;padding:20px 16px 140px;grid-template-columns:repeat(2,1fr)}}
-/* ---- Personen, Sammlungen, Karte ---- */
+/* ---- People, collections, map ---- */
 .people{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:22px;padding:22px 24px 120px}
 .person{background:none;text-align:center;color:var(--text)}
 .person img,.person .ph{width:100%;aspect-ratio:1;border-radius:50%;object-fit:cover;background:var(--bg2);display:block}
@@ -169,7 +169,7 @@ main{position:relative;overflow-y:auto;height:100%}
 .map-ctl button{width:38px;height:38px;background:none;font-size:22px}
 .map-ctl button+button{border-top:1px solid var(--line)}
 .map-attr{position:absolute;right:6px;bottom:4px;font-size:11px;background:#fffc;color:#333;padding:1px 6px;border-radius:4px;z-index:5}
-/* ---- Viewer: Fokus-/Vollbildmodus ---- */
+/* ---- Viewer: focus / fullscreen mode ---- */
 .viewer.immersive .v-tools,.viewer.immersive #vClose,.viewer.immersive .nav,.viewer.immersive #vInfo,.viewer.immersive .v-panel{display:none!important}
 .viewer.immersive{cursor:none}
 
@@ -179,3 +179,7 @@ main{position:relative;overflow-y:auto;height:100%}
 .side-lang+.logout{margin-top:0}
 .login .lang-select{margin-top:6px}
 [dir="rtl"] .tb-right{justify-self:start}
+
+/* keep the viewer toolbar visible next to the open info panel */
+.viewer:has(#vPanel:not(.hidden)) .v-tools{right:calc(min(340px,100vw) + 16px)}
+.viewer:has(#vPanel:not(.hidden)) #vInfo{right:min(340px,100vw)}
