@@ -1,5 +1,5 @@
 FROM node:22-alpine
-LABEL org.opencontainers.image.source="https://github.com/fabian1512/immich-apple-photos-webapp" \
+LABEL org.opencontainers.image.source="https://github.com/fabian1512/immich-photos-webapp" \
       org.opencontainers.image.description="A web app for Immich in the style of the Apple Photos app" \
       org.opencontainers.image.licenses="MIT"
 WORKDIR /app

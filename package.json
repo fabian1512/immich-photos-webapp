@@ -1,6 +1,6 @@
 {
-  "name": "immich-apple-photos-webapp",
-  "version": "0.1.0",
+  "name": "immich-photos-webapp",
+  "version": "0.1.1",
   "description": "A web app for Immich in the style of the Apple Photos app",
   "license": "MIT",
   "private": true,

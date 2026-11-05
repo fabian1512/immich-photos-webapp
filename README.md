@@ -1,4 +1,4 @@
-# Immich Apple-Photos Webapp
+# Immich Photos Webapp
 
 A lightweight web app for [Immich](https://immich.app/) whose look and navigation are inspired by the
 Apple Photos app: **Years / Months / All Photos**, large year and month cards, a justified photo grid,
@@ -66,7 +66,7 @@ A ready-made multi-arch image (amd64, arm64) is published to the GitHub Containe
 ```sh
 docker run -d --name immich-photos-web -p 8090:8080 \
   -e IMMICH_URL=http://your-immich-host:2283 \
-  ghcr.io/fabian1512/immich-apple-photos-webapp:latest        # http://<host>:8090
+  ghcr.io/fabian1512/immich-photos-webapp:latest        # http://<host>:8090
 ```
 
 Or with Docker Compose next to Immich — `docker-compose.yml` joins Immich's Docker network
@@ -78,7 +78,7 @@ docker compose up -d             # http://<host>:8090
 
 Override with `IMMICH_URL`, `IMMICH_NETWORK`, `PUBLIC_PORT` (see `.env.example`). To build the image from
 this checkout instead: `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`.
-Image tags: `latest`, `0.1.0`, `0.1`.
+Image tags: `latest`, `0.1.1`, `0.1`.
 
 ### Deploy script
 
