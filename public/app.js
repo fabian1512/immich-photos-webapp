@@ -591,7 +591,7 @@ function personCard(p) {
   const b = el("button", "person"); b.append(personAvatar(p.id), el("b", null, p.name || tr("people.unnamed")));
   b.onclick = () => (location.hash = `#/person/${p.id}/${encodeURIComponent(p.name || "Person")}`); return b;
 }
-const sortPeople = (list) => [...list].sort((a, b) => (!!b.name - !!a.name) || (a.name || "").localeCompare(b.name || "", "de"));
+// Keep the order the Immich API returns: favorites first, then named people, then by number of photos.
 async function showPeople() {
   resetView(); setHeader(tr("nav.people"));
   const wrap = el("div", "people"); $("#content").append(wrap);
@@ -601,7 +601,7 @@ async function showPeople() {
       const r = await api(`/people?withHidden=false&size=120&page=${page}`);
       if (token !== state.overviewToken) return;
       // within one page: named people first
-      for (const p of sortPeople(r.people)) wrap.append(personCard(p));
+      for (const p of r.people) wrap.append(personCard(p));
       if (more) more.remove(); more = null;
       if (r.hasNextPage) { page++; more = el("button", "pill more", tr("people.more")); more.onclick = load; $("#content").append(more); }
       if (page === 1 && !r.people.length) $("#empty").classList.remove("hidden");
@@ -626,7 +626,7 @@ async function showCollections() {
   for (const [label, href] of [[tr("nav.favorites"), "#/favorites"], [tr("nav.videos"), "#/videos"], [tr("nav.live"), "#/live"], [tr("nav.map"), "#/map"]]) { const a = el("a", null, label); a.href = href; qs.append(a); }
   const people = section(tr("nav.people"), "#/people"), places = section(tr("collections.places")), albums = section(tr("nav.albums"), "#/albums");
   const drop = (strip) => { if (strip.previousSibling) strip.previousSibling.remove(); strip.remove(); }; // leere Abschnitte ausblenden
-  api("/people?withHidden=false&size=40&page=1").then((r) => { if (!alive()) return; for (const p of sortPeople(r.people).filter((p) => p.name).slice(0, 20)) people.append(personCard(p)); if (!people.children.length) drop(people); }).catch(() => drop(people));
+  api("/people?withHidden=false&size=40&page=1").then((r) => { if (!alive()) return; for (const p of r.people.filter((p) => p.name).slice(0, 20)) people.append(personCard(p)); if (!people.children.length) drop(people); }).catch(() => drop(people));
   api("/search/cities").then((r) => {
     if (!alive()) return;
     for (const a of r.slice(0, 60)) {
