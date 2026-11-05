@@ -78,6 +78,13 @@ docker compose up -d             # http://<host>:8090
 
 Override with `IMMICH_URL`, `IMMICH_NETWORK`, `PUBLIC_PORT` (see `.env.example`). To build the image from
 this checkout instead: `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`.
+
+On a **different machine** than Immich (same network), use the standalone file and point it at Immich:
+
+```sh
+IMMICH_URL=http://192.168.1.50:2283 docker compose -f docker-compose.standalone.yml up -d
+```
+
 Image tags: `latest`, `0.1.1`, `0.1`.
 
 ### Deploy script

@@ -1,0 +1,12 @@
+# Runs on a different machine than Immich (same network): no shared Docker network needed.
+# Set IMMICH_URL to an address the container can reach, e.g. http://192.168.1.50:2283
+#   IMMICH_URL=http://192.168.1.50:2283 docker compose -f docker-compose.standalone.yml up -d
+services:
+  fotos-web:
+    image: ghcr.io/fabian1512/immich-photos-webapp:latest
+    container_name: fotos-web
+    restart: unless-stopped
+    environment:
+      IMMICH_URL: ${IMMICH_URL:?Set IMMICH_URL, e.g. http://192.168.1.50:2283}
+    ports:
+      - "${PUBLIC_PORT:-8090}:8080"
