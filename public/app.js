@@ -393,7 +393,7 @@ function resetView() {
 }
 function syncControls() {
   document.querySelectorAll("#seg button").forEach((b) => b.classList.toggle("active", b.dataset.mode === state.mode));
-  $("#zOut").disabled = state.zoom <= 0; $("#zIn").disabled = state.zoom >= ZOOMS.length - 1;
+  $("#zOut").disabled = level() <= 0; $("#zIn").disabled = level() >= maxLevel();
 }
 function showFeed(filters, title, { back = false, seg = false, feedOpts, noDate = false, makeFeed } = {}) {
   resetView();
@@ -404,10 +404,18 @@ function showFeed(filters, title, { back = false, seg = false, feedOpts, noDate 
   state.feed = makeFeed ? makeFeed() : new Feed(filters, feedOpts);
   loadMore();
 }
+// Zoom steps. In the library they run through Years -> Months -> All Photos (small ... large);
+// everywhere else only through the grid sizes.
+function level() { return state.view === "library" ? (state.mode === "years" ? 0 : state.mode === "months" ? 1 : 2 + state.zoom) : state.zoom; }
+function maxLevel() { return state.view === "library" ? 1 + ZOOMS.length : ZOOMS.length - 1; }
 function zoom(d) {
-  const z = Math.min(ZOOMS.length - 1, Math.max(0, state.zoom + d));
-  if (z === state.zoom) return;
-  state.zoom = z; store.set("zoom2", z); syncControls(); gridRelayout();
+  const lib = state.view === "library", cur = level(), n = Math.min(maxLevel(), Math.max(0, cur + d));
+  if (n === cur) return;
+  if (!lib) { state.zoom = n; store.set("zoom2", n); syncControls(); gridRelayout(); return; }
+  const mode = n === 0 ? "years" : n === 1 ? "months" : "all", z = n >= 2 ? n - 2 : state.zoom;
+  const modeChanged = mode !== state.mode;
+  state.mode = mode; state.zoom = z; store.set("mode", mode); store.set("zoom2", z);
+  if (modeChanged) showLibrary(); else { syncControls(); gridRelayout(); }
 }
 $("#zOut").onclick = () => zoom(-1); $("#zIn").onclick = () => zoom(1);
 
@@ -495,7 +503,7 @@ function showLibrary(restore) {
     showFeed({ visibility: "timeline" }, tr("nav.library"), { seg: true, makeFeed: () => libraryFeed(null, { visibility: "timeline" }) }); state.view = "library";
   } else {
     resetView(); state.view = "library";
-    setHeader(tr("nav.library"), { seg: true }); syncControls();
+    setHeader(tr("nav.library"), { seg: true, zoom: true }); syncControls();
     showOverview(restore);
   }
 }
@@ -744,10 +752,23 @@ function showBBox(bbox) {
 // ---------- Routing ----------
 function markActive() {
   const [, name = "photos", id] = location.hash.split("/");
-  const main = { album: "", search: "", month: "photos", person: "people", bbox: "map", place: "collections", live: "collections" }[name] ?? name;
-  document.querySelectorAll("#mainNav a").forEach((a) => a.classList.toggle("active", a.dataset.route === main));
+  const main = { month: "photos", person: "people", bbox: "map", place: "collections" }[name] ?? name;
+  document.querySelectorAll("aside a[data-route]").forEach((a) => a.classList.toggle("active", a.dataset.route === main));
   document.querySelectorAll("#sideAlbums a").forEach((a) => a.classList.toggle("active", name === "album" && a.dataset.albumId === id));
+  const tab = ["photos", "month", "favorites", "search"].includes(name) ? "photos" : "collections";
+  document.querySelectorAll("#tabbar a").forEach((a) => a.classList.toggle("active", a.dataset.tab === tab));
+  if (name === "album") setGroup("albums", true);
+  if (name === "videos" || name === "live") setGroup("media", true);
 }
+// Collapsible sidebar groups (Albums, Media types), remembered per browser.
+function setGroup(key, open) {
+  const sub = key === "albums" ? $("#sideAlbums") : $("#mediaNav");
+  sub.classList.toggle("hidden", !open);
+  document.querySelector(`.chev[data-toggle="${key}"]`).setAttribute("aria-expanded", String(open));
+  store.set("group." + key, open);
+}
+document.querySelectorAll("[data-toggle]").forEach((b) => b.addEventListener("click", () => setGroup(b.dataset.toggle, b.parentElement.querySelector(".chev").getAttribute("aria-expanded") !== "true")));
+["albums", "media"].forEach((k) => setGroup(k, store.get("group." + k, false)));
 let lastName = "";
 function route() {
   const [, name = "photos", id, title] = location.hash.split("/");
@@ -785,6 +806,26 @@ $("#searchForm").addEventListener("submit", (e) => {
   e.preventDefault(); const q = $("#searchInput").value.trim();
   if (q) location.hash = "#/search/" + encodeURIComponent(q);
 });
+
+// Pinch (touch) or ctrl+wheel (trackpad pinch) on the library changes the zoom step.
+{
+  let d0 = 0, busy = false;
+  const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  const m = $("#main");
+  m.addEventListener("touchstart", (e) => { if (e.touches.length === 2) d0 = dist(e.touches); }, { passive: true });
+  m.addEventListener("touchmove", (e) => {
+    if (e.touches.length !== 2 || !d0 || !$("#viewer").classList.contains("hidden")) return;
+    const r = dist(e.touches) / d0;
+    if (r > 1.3) { zoom(1); d0 = dist(e.touches); } else if (r < 0.77) { zoom(-1); d0 = dist(e.touches); }
+  }, { passive: true });
+  m.addEventListener("touchend", () => { d0 = 0; }, { passive: true });
+  m.addEventListener("wheel", (e) => {
+    if (!e.ctrlKey || state.view === "map" || !$("#zoom") || $("#zoom").classList.contains("hidden")) return;
+    e.preventDefault();
+    if (busy) return; busy = true; setTimeout(() => (busy = false), 350);
+    zoom(e.deltaY < 0 ? 1 : -1);
+  }, { passive: false });
+}
 
 // ---------- Viewer ----------
 let vIndex = -1;
