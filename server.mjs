@@ -41,7 +41,7 @@ http.createServer((req, res) => {
   if (!file.startsWith(root)) { res.writeHead(403); return res.end(); }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404); return res.end("Nicht gefunden"); }
-    res.writeHead(200, { "content-type": types[path.extname(file)] || "application/octet-stream" });
+    res.writeHead(200, { "content-type": types[path.extname(file)] || "application/octet-stream", "cache-control": "no-cache" });
     res.end(data);
   });
 }).listen(port, () => console.log(`http://localhost:${port}  ->  ${target.origin}`));
