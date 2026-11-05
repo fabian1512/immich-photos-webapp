@@ -1,0 +1,22 @@
+# Runs next to Immich: joins Immich's Docker network and talks to it internally.
+# Adjust the values below (or set them in a .env file next to this file) if your setup differs.
+services:
+  fotos-web:
+    build: .
+    container_name: fotos-web
+    restart: unless-stopped
+    environment:
+      IMMICH_URL: ${IMMICH_URL:-http://immich_server:2283}
+    ports:
+      - "${PUBLIC_PORT:-8090}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - immich
+networks:
+  immich:
+    external: true
+    name: ${IMMICH_NETWORK:-immich_default}

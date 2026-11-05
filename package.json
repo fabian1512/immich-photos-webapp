@@ -1,0 +1,13 @@
+{
+  "name": "immich-apple-photos-webapp",
+  "version": "0.1.0",
+  "description": "A web app for Immich in the style of the Apple Photos app",
+  "license": "MIT",
+  "private": true,
+  "type": "commonjs",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}

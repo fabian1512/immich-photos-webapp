@@ -1,0 +1,903 @@
+"use strict";
+const $ = (s) => document.querySelector(s);
+const el = (tag, cls, text) => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+};
+const store = {
+  get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+const fmt = (o) => new Intl.DateTimeFormat("de-DE", { ...o, timeZone: "UTC" });
+const monthFmt = fmt({ month: "long", year: "numeric" });
+const dateFmt = fmt({ dateStyle: "long", timeStyle: "short" });
+const nf = new Intl.NumberFormat("de-DE");
+const img = (id, size) => `/api/assets/${id}/thumbnail?size=${size}`;
+const fmtBytes = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1e3)) + " KB").replace(".", ",");
+
+// ---------- Netzwerk ----------
+async function rawFetch(path, opts = {}) {
+  let r;
+  try {
+    r = await fetch("/api" + path, { credentials: "same-origin", ...opts, headers: { "Content-Type": "application/json", ...(opts.headers || {}) } });
+  } catch { throw new Error("Server nicht erreichbar"); }
+  if (r.status === 401) { showLogin("Sitzung abgelaufen – bitte neu anmelden"); throw new Error("401"); }
+  if (!r.ok) {
+    let msg = ""; try { msg = (await r.json()).message || ""; } catch {}
+    throw new Error(`${r.status} ${Array.isArray(msg) ? msg.join(", ") : msg}`.trim());
+  }
+  return r;
+}
+async function api(path, opts) {
+  const r = await rawFetch(path, opts);
+  return r.status === 204 || !(r.headers.get("content-type") || "").includes("json") ? null : r.json();
+}
+let toastTimer;
+function toast(msg, isErr) {
+  const t = $("#toast"); t.textContent = msg; t.classList.toggle("err", !!isErr); t.classList.remove("hidden");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add("hidden"), isErr ? 6000 : 3000);
+}
+function showError(msg) {
+  $("#empty").classList.remove("hidden"); $("#empty h2").textContent = msg; $("#retry").classList.remove("hidden");
+}
+function clearEmpty() { $("#empty").classList.add("hidden"); $("#empty h2").textContent = "Keine Fotos"; $("#retry").classList.add("hidden"); }
+$("#retry").onclick = () => route();
+
+// ---------- Anmeldung ----------
+function showLogin(msg) {
+  if (msg && !$("#app").classList.contains("hidden")) $("#loginError").textContent = msg;
+  state.buckets = null; state.userId = null; state.albums = null;
+  $("#app").classList.add("hidden"); $("#login").classList.remove("hidden");
+}
+async function showApp() {
+  $("#login").classList.add("hidden"); $("#app").classList.remove("hidden");
+  loadSidebarAlbums(); route();
+}
+$("#loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault(); $("#loginError").textContent = "";
+  const f = new FormData(e.target);
+  try {
+    const r = await fetch("/api/auth/login", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: f.get("email"), password: f.get("password") }) });
+    if (!r.ok) throw new Error(r.status === 401 ? "E-Mail oder Passwort falsch" : "Fehler " + r.status);
+    e.target.reset(); showApp();
+  } catch (err) { $("#loginError").textContent = err instanceof TypeError ? "Server nicht erreichbar" : err.message; }
+});
+$("#logout").addEventListener("click", async () => {
+  try { await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" }); } catch {}
+  showLogin();
+});
+
+// ---------- Daten ----------
+class Feed {
+  constructor(filters, { endpoint = "/search/metadata", fallback = null, size = 200 } = {}) {
+    Object.assign(this, { filters, endpoint, fallback, size, page: 1, done: false, loading: false, items: [] });
+  }
+  body() {
+    const b = { ...this.filters, size: this.size, page: this.page };
+    if (this.endpoint === "/search/metadata") b.order = "desc";
+    return b;
+  }
+  async more() {
+    this.loading = true;
+    try {
+      let res;
+      try { res = await api(this.endpoint, { method: "POST", body: JSON.stringify(this.body()) }); }
+      catch (e) {
+        // Intelligente Suche nicht verfügbar (z. B. Machine-Learning-Dienst aus): nach Dateinamen suchen.
+        if (this.fallback && this.page === 1 && e.message !== "401") {
+          ({ endpoint: this.endpoint, filters: this.filters } = this.fallback); this.fallback = null; this.fellBack = true;
+          res = await api(this.endpoint, { method: "POST", body: JSON.stringify(this.body()) });
+        } else throw e;
+      }
+      const start = this.items.length;
+      for (const a of res.assets.items) this.items.push(prepare(a));
+      if (res.assets.nextPage) this.page = Number(res.assets.nextPage); else this.done = true;
+      if (!res.assets.items.length) this.done = true;
+      return this.items.slice(start);
+    } finally { this.loading = false; }
+  }
+}
+function parseDuration(d) {
+  if (d == null) return 0;
+  if (typeof d === "number") return d / 1000; // Immich 3: Millisekunden
+  const m = String(d).match(/^(\d+):(\d+):(\d+(?:\.\d+)?)$/);
+  return m ? +m[1] * 3600 + +m[2] * 60 + parseFloat(m[3]) : 0;
+}
+const fmtDuration = (s) => {
+  s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return h ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}` : `${m}:${String(sec).padStart(2, "0")}`;
+};
+function prepare(a) {
+  const d = new Date(a.localDateTime || a.fileCreatedAt);
+  a._date = isNaN(d) ? null : d;
+  const r = a.width > 0 && a.height > 0 ? a.width / a.height : 1;
+  a._ratio = Math.min(3, Math.max(0.4, r));
+  return a;
+}
+
+// Spaltenorientierte Antwort von /timeline/bucket (so lädt auch die Immich-Weboberfläche):
+// ein Request pro Monat statt vieler Seiten mit vollständigen Objekten.
+function fromBucket(d) {
+  const out = [], n = (d.id || []).length;
+  for (let i = 0; i < n; i++) {
+    const created = Date.parse(d.fileCreatedAt && d.fileCreatedAt[i]);
+    const local = isNaN(created) ? null : new Date(created + ((d.localOffsetHours && d.localOffsetHours[i]) || 0) * 3600e3);
+    const ratio = d.ratio && d.ratio[i] > 0 ? d.ratio[i] : 1;
+    const a = {
+      id: d.id[i], type: d.isImage && d.isImage[i] === false ? "VIDEO" : "IMAGE", duration: d.duration && d.duration[i],
+      isFavorite: !!(d.isFavorite && d.isFavorite[i]), livePhotoVideoId: d.livePhotoVideoId && d.livePhotoVideoId[i],
+      thumbhash: d.thumbhash && d.thumbhash[i], originalFileName: "",
+    };
+    a._date = local; a._ratio = Math.min(3, Math.max(0.4, ratio));
+    out.push(a);
+  }
+  return out;
+}
+class BucketFeed {
+  /** params: Abfrageparameter für Immich; buckets: Liste der Monate (optional); fallback: { filters, opts } für die Suche */
+  constructor(params, { buckets = null, fallback = null, minBatch = 150, prepare = null } = {}) {
+    Object.assign(this, { params, queue: buckets && buckets.slice(), fallback, minBatch, prepare, done: false, loading: false, items: [], next: null, delegate: null });
+  }
+  qs(extra) { return new URLSearchParams({ ...this.params, ...extra }).toString(); }
+  fetchBucket(raw) { return api(`/timeline/bucket?${this.qs({ timeBucket: raw })}`).then(fromBucket); }
+  async more() {
+    if (this.delegate) { const r = await this.delegate.more(); this.done = this.delegate.done; return r; }
+    this.loading = true;
+    try {
+      if (this.prepare) { const p = this.prepare; this.prepare = null; await p(this); }
+      if (!this.queue) this.queue = (await api(`/timeline/buckets?${this.qs({})}`)).map((b) => b.timeBucket);
+      const start = this.items.length;
+      while (this.queue.length && this.items.length - start < this.minBatch) {
+        const raw = this.queue.shift();
+        const got = await (this.next && this.next.raw === raw ? this.next.p : this.fetchBucket(raw));
+        this.next = null;
+        this.items.push(...got);
+        // Den nächsten Monat schon im Hintergrund holen, während der aktuelle gezeichnet wird.
+        if (this.queue.length) { const nr = this.queue[0]; this.next = { raw: nr, p: this.fetchBucket(nr) }; this.next.p.catch(() => {}); }
+      }
+      if (!this.queue.length) this.done = true;
+      return this.items.slice(start);
+    } catch (e) {
+      // Interner Endpunkt nicht verfügbar (z. B. nach einem Immich-Update): auf die stabile Suche ausweichen.
+      if (this.fallback && !this.items.length && e.message !== "401") {
+        this.delegate = new Feed(this.fallback.filters, this.fallback.opts); this.delegate.items = this.items; this.fellBack = "bucket";
+        const r = await this.delegate.more(); this.done = this.delegate.done; return r;
+      }
+      throw e;
+    } finally { this.loading = false; }
+  }
+}
+
+// ---------- Zustand ----------
+const GAP = 10;
+const ZOOMS = [60, 90, 125, 180, 270];
+const state = {
+  mode: store.get("mode", "months"), zoom: store.get("zoom2", 2), feed: null, buckets: null, albums: null, userId: null,
+  scroll: {}, view: "", noDate: false, overviewToken: 0, pendingYear: null,
+  sel: { on: false, ids: new Set() },
+};
+const targetH = () => ZOOMS[state.zoom];
+
+// ---------- Virtualisiertes Raster ----------
+const grid = { el: null, rows: [], ratios: [], W: 0, rendered: new Map() };
+const gridWidth = () => Math.max(100, $("#content").clientWidth - GAP * 2);
+
+function gridInit() {
+  $("#content").replaceChildren();
+  grid.el = el("div", "vgrid"); $("#content").append(grid.el);
+  Object.assign(grid, { rows: [], ratios: [], W: gridWidth() });
+  grid.rendered.clear();
+  document.documentElement.style.setProperty("--gap", GAP + "px");
+  grid.el.style.height = "0px";
+}
+function gridInvalidateFrom(idx) {
+  for (const [i, node] of grid.rendered) if (i >= idx) { node.remove(); grid.rendered.delete(i); }
+}
+function gridAppend(items) {
+  if (!grid.el || !items.length) return;
+  for (const a of items) grid.ratios.push(a._ratio);
+  const from = grid.rows.length && !grid.rows.at(-1).full ? grid.rows.length - 1 : grid.rows.length;
+  Layout.layoutRows(grid.ratios, grid.W, targetH(), GAP, grid.rows);
+  gridInvalidateFrom(from);
+  grid.el.style.height = Layout.totalHeight(grid.rows) + "px";
+  renderVisible(); updateDate();
+}
+// Alles neu berechnen (Zoom, Fenstergröße, gelöschte Fotos) und die Stelle im Blick behalten.
+function gridRelayout() {
+  if (!grid.el || !state.feed) return;
+  const main = $("#main"), viewTop = main.scrollTop - grid.el.offsetTop;
+  const ar = Layout.rowAt(grid.rows, viewTop), anchor = ar >= 0 ? grid.rows[ar].start : 0;
+  gridInvalidateFrom(0);
+  grid.W = gridWidth();
+  grid.ratios = state.feed.items.map((a) => a._ratio);
+  grid.rows = Layout.layoutRows(grid.ratios, grid.W, targetH(), GAP, []);
+  grid.el.style.height = Layout.totalHeight(grid.rows) + "px";
+  const nr = grid.rows.find((r) => anchor >= r.start && anchor < r.end);
+  if (nr) main.scrollTop = grid.el.offsetTop + nr.top;
+  renderVisible(); updateDate();
+}
+function makeTile(a, idx) {
+  const t = el("button", "tile");
+  t.dataset.id = a.id; t.dataset.idx = idx;
+  t.setAttribute("aria-label", a.originalFileName || "Foto");
+  const i = el("img"); i.decoding = "async"; i.alt = "";
+  const hash = ThumbHash.toDataURL(a.thumbhash); // unscharfe Vorschau, bis das echte Bild da ist
+  if (hash) t.style.backgroundImage = `url(${hash})`;
+  i.onload = () => i.classList.add("loaded");
+  i.onerror = () => t.classList.add("missing"); // Vorschau fehlt auf dem Server: Platzhalter statt Lücke
+  i.src = img(a.id, ZOOMS[state.zoom] > 150 ? "preview" : "thumbnail");
+  t.append(i, el("span", "check"));
+  if (a.type === "VIDEO") { const s = parseDuration(a.duration); t.append(el("span", "badge b-dur", s ? fmtDuration(s) : "▶")); }
+  if (a.isFavorite) t.append(el("span", "badge b-fav", "♥"));
+  if (a.livePhotoVideoId) t.append(el("span", "badge b-live", "◎"));
+  if (state.sel.ids.has(a.id)) t.classList.add("sel");
+  return t;
+}
+function makeRowEl(r) {
+  const items = state.feed.items, W = grid.W, T = targetH();
+  const row = el("div", "row");
+  row.style.top = r.top + "px"; row.style.height = r.h + "px"; row.style.width = W + "px";
+  for (let i = r.start; i < r.end; i++) {
+    const t = makeTile(items[i], i);
+    t.style.flex = r.full ? `${items[i]._ratio} 1 0` : `0 0 ${items[i]._ratio * T}px`;
+    row.append(t);
+  }
+  return row;
+}
+function renderVisible() {
+  if (!grid.el || !state.feed) return;
+  const main = $("#main"), viewTop = main.scrollTop - grid.el.offsetTop;
+  const lo = viewTop - 800, hi = viewTop + main.clientHeight + 800;
+  const first = Layout.rowAt(grid.rows, lo);
+  if (first < 0) return;
+  let i = first;
+  for (; i < grid.rows.length && grid.rows[i].top <= hi; i++) {
+    if (!grid.rendered.has(i)) { const n = makeRowEl(grid.rows[i]); grid.el.append(n); grid.rendered.set(i, n); }
+  }
+  const last = i - 1;
+  for (const [k, node] of grid.rendered) if (k < first || k > last) { node.remove(); grid.rendered.delete(k); }
+}
+// Klick auf eine Kachel (Delegation, die Kacheln selbst haben keine eigenen Handler)
+$("#content").addEventListener("click", (e) => {
+  const t = e.target.closest(".tile"); if (!t || !state.feed) return;
+  const a = state.feed.items[+t.dataset.idx]; if (!a) return;
+  if (state.sel.on) toggleSelect(a, t); else openViewer(+t.dataset.idx);
+});
+
+let dateRaf = 0;
+function updateDate() {
+  if (dateRaf) return;
+  dateRaf = requestAnimationFrame(() => {
+    dateRaf = 0;
+    if (state.noDate || !state.feed || !grid.rows.length || state.view === "overview") return;
+    const y = $("#main").scrollTop - grid.el.offsetTop + 70;
+    const r = grid.rows[Math.max(0, Layout.rowAt(grid.rows, y))];
+    const a = r && state.feed.items[r.start];
+    $("#tDate").textContent = a && a._date ? monthFmt.format(a._date) : "";
+  });
+}
+$("#main").addEventListener("scroll", () => { renderVisible(); updateDate(); }, { passive: true });
+
+async function loadMore() {
+  const f = state.feed;
+  if (!f || f.loading || f.done) return; // nie rekursiv
+  let failed = false;
+  const items = await f.more().catch((e) => { failed = true; if (e.message !== "401") showError("Fehler: " + e.message); return []; });
+  if (f !== state.feed) return;
+  if (f.fellBack === "bucket") { f.fellBack = false; console.warn("Zeitleisten-Schnittstelle nicht verfügbar, nutze Suche"); }
+  else if (f.fellBack) { f.fellBack = false; toast("Intelligente Suche nicht verfügbar – suche nach Dateinamen"); }
+  gridAppend(items);
+  if (!failed) { f.items.length ? clearEmpty() : ($("#empty").classList.remove("hidden"), $("#retry").classList.add("hidden")); }
+  if (!failed && items.length && !f.done) {
+    requestAnimationFrame(() => { if (f === state.feed && $("#sentinel").getBoundingClientRect().top < innerHeight + 600) loadMore(); });
+  }
+}
+new IntersectionObserver((en) => { if (en[0].isIntersecting) loadMore(); }, { rootMargin: "800px" }).observe($("#sentinel"));
+let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => state.feed && grid.el && gridRelayout(), 150); });
+
+// ---------- Auswahl und Aktionen ----------
+function updateSelUI() {
+  $("#content").classList.toggle("selecting", state.sel.on);
+  $("#selbar").classList.toggle("hidden", !state.sel.on);
+  $("#selToggle").textContent = state.sel.on ? "Fertig" : "Auswählen";
+  $("#selCount").textContent = `${state.sel.ids.size} ausgewählt`;
+  for (const b of ["#selFav", "#selAlbum", "#selDl", "#selDel"]) $(b).disabled = state.sel.ids.size === 0;
+}
+function exitSelect() { state.sel.on = false; state.sel.ids.clear(); document.querySelectorAll(".tile.sel").forEach((t) => t.classList.remove("sel")); updateSelUI(); }
+function toggleSelect(a, tile) {
+  if (state.sel.ids.has(a.id)) state.sel.ids.delete(a.id); else state.sel.ids.add(a.id);
+  tile.classList.toggle("sel", state.sel.ids.has(a.id)); updateSelUI();
+}
+$("#selToggle").onclick = () => (state.sel.on ? exitSelect() : (state.sel.on = true, updateSelUI()));
+$("#selCancel").onclick = exitSelect;
+const selectedItems = () => state.feed.items.filter((a) => state.sel.ids.has(a.id));
+
+async function setFavorite(items, value) {
+  await api("/assets", { method: "PUT", body: JSON.stringify({ ids: items.map((a) => a.id), isFavorite: value }) });
+  items.forEach((a) => (a.isFavorite = value));
+  if (state.view === "favorites" && !value) removeItems(new Set(items.map((a) => a.id)));
+  else { gridInvalidateFrom(0); renderVisible(); }
+}
+function removeItems(ids) {
+  state.feed.items = state.feed.items.filter((a) => !ids.has(a.id));
+  state.buckets = null; // Zahlen der Übersicht sind veraltet
+  gridRelayout();
+  if (!state.feed.items.length) $("#empty").classList.remove("hidden");
+}
+async function deleteItems(items) {
+  if (!items.length) return false;
+  const n = items.length;
+  if (!confirm(`${n === 1 ? "Dieses Objekt" : n + " Objekte"} in den Papierkorb verschieben?\n(Immich löscht sie nach der eingestellten Frist endgültig.)`)) return false;
+  await api("/assets", { method: "DELETE", body: JSON.stringify({ ids: items.map((a) => a.id), force: false }) });
+  removeItems(new Set(items.map((a) => a.id)));
+  toast(`${n} in den Papierkorb verschoben`);
+  return true;
+}
+async function downloadItems(items) {
+  if (items.length === 1) return triggerDownload(`/api/assets/${items[0].id}/original`, items[0].originalFileName || "foto");
+  toast("Archiv wird erstellt …");
+  const r = await rawFetch("/download/archive", { method: "POST", body: JSON.stringify({ assetIds: items.map((a) => a.id) }) });
+  const url = URL.createObjectURL(await r.blob());
+  triggerDownload(url, "Fotos.zip"); setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+function triggerDownload(href, name) { const a = el("a"); a.href = href; a.download = name; document.body.append(a); a.click(); a.remove(); }
+async function pickAlbum() {
+  if (!state.albums) await loadSidebarAlbums();
+  return new Promise((resolve) => {
+    const dlg = $("#albumDialog"), list = $("#albumList"); list.replaceChildren();
+    for (const a of state.albums || []) {
+      const b = el("button"); const i = a.albumThumbnailAssetId ? el("img") : el("span", "ph");
+      if (a.albumThumbnailAssetId) { i.alt = ""; i.src = img(a.albumThumbnailAssetId, "thumbnail"); }
+      b.append(i, el("span", null, a.albumName)); b.onclick = () => { dlg.close(); resolve(a); }; list.append(b);
+    }
+    if (!(state.albums || []).length) list.append(el("p", null, "Keine Alben vorhanden."));
+    dlg.onclose = () => resolve(null); $("#albumCancel").onclick = () => dlg.close(); dlg.showModal();
+  });
+}
+async function addToAlbum(items) {
+  const album = await pickAlbum(); if (!album) return;
+  const res = await api(`/albums/${album.id}/assets`, { method: "PUT", body: JSON.stringify({ ids: items.map((a) => a.id) }) });
+  const ok = (res || []).filter((x) => x.success).length, dup = (res || []).filter((x) => x.error === "duplicate").length;
+  toast(`${ok} zu „${album.albumName}" hinzugefügt${dup ? `, ${dup} ${dup === 1 ? "war" : "waren"} schon enthalten` : ""}`);
+}
+const guard = (fn) => async () => { try { await fn(); } catch (e) { if (e.message !== "401") toast("Fehler: " + e.message, true); } };
+$("#selFav").onclick = guard(async () => { const it = selectedItems(); await setFavorite(it, !it.every((a) => a.isFavorite)); });
+$("#selAlbum").onclick = guard(async () => addToAlbum(selectedItems()));
+$("#selDl").onclick = guard(async () => downloadItems(selectedItems()));
+$("#selDel").onclick = guard(async () => { if (await deleteItems(selectedItems())) exitSelect(); });
+
+// ---------- Ansichten ----------
+function setHeader(title, { back = false, seg = false, zoom = false, select = false } = {}) {
+  $("#tTitle").textContent = title; $("#tDate").textContent = "";
+  $("#back").classList.toggle("hidden", !back);
+  $("#seg").classList.toggle("hidden", !seg);
+  $("#zoom").classList.toggle("hidden", !zoom);
+  $("#selToggle").classList.toggle("hidden", !select);
+}
+function resetView() {
+  state.overviewToken++; coverQueue.waiting.length = 0;
+  exitSelect(); clearEmpty(); $("#main").style.overflow = "";
+  $("#content").replaceChildren(); grid.el = null; grid.rendered.clear();
+  state.feed = null; state.noDate = false; $("#main").scrollTop = 0;
+}
+function syncControls() {
+  document.querySelectorAll("#seg button").forEach((b) => b.classList.toggle("active", b.dataset.mode === state.mode));
+  $("#zOut").disabled = state.zoom <= 0; $("#zIn").disabled = state.zoom >= ZOOMS.length - 1;
+}
+function showFeed(filters, title, { back = false, seg = false, feedOpts, noDate = false, makeFeed } = {}) {
+  resetView();
+  state.view = state.view || "feed";
+  setHeader(title, { back, seg, zoom: true, select: true });
+  syncControls(); gridInit();
+  state.noDate = noDate;
+  state.feed = makeFeed ? makeFeed() : new Feed(filters, feedOpts);
+  loadMore();
+}
+function zoom(d) {
+  const z = Math.min(ZOOMS.length - 1, Math.max(0, state.zoom + d));
+  if (z === state.zoom) return;
+  state.zoom = z; store.set("zoom2", z); syncControls(); gridRelayout();
+}
+$("#zOut").onclick = () => zoom(-1); $("#zIn").onclick = () => zoom(1);
+
+// ---------- Mediathek: Jahre / Monate (Übersichtskarten) und Alle Fotos ----------
+const MONTHS = Array.from({ length: 12 }, (_, i) => fmt({ month: "long" }).format(new Date(Date.UTC(2000, i, 1))));
+const coverQueue = { running: 0, waiting: [] };
+function pumpCovers() {
+  while (coverQueue.running < 4 && coverQueue.waiting.length) {
+    const job = coverQueue.waiting.shift(); coverQueue.running++;
+    job().catch(() => {}).finally(() => { coverQueue.running--; pumpCovers(); });
+  }
+}
+const coverObserver = new IntersectionObserver((entries) => {
+  for (const en of entries) {
+    if (!en.isIntersecting) continue;
+    const card = en.target; coverObserver.unobserve(card);
+    const { after, before, size } = card.dataset, token = state.overviewToken;
+    coverQueue.waiting.push(async () => {
+      if (token !== state.overviewToken) return;
+      const r = await api("/search/metadata", { method: "POST", body: JSON.stringify({ visibility: "timeline", type: "IMAGE", takenAfter: after, takenBefore: before, order: "desc", size: 1, page: 1 }) });
+      const a = r.assets.items[0];
+      if (!a || token !== state.overviewToken) return;
+      const hash = ThumbHash.toDataURL(a.thumbhash); if (hash) card.style.backgroundImage = `url(${hash})`;
+      const i = el("img"); i.alt = ""; i.onload = () => i.classList.add("loaded"); i.src = img(a.id, size); i.onerror = () => i.remove(); card.prepend(i);
+    });
+    pumpCovers();
+  }
+}, { rootMargin: "400px" });
+
+async function loadBuckets() {
+  if (state.buckets && Date.now() - (state.bucketsAt || 0) > 60000) state.buckets = null; // nach 1 Minute neu holen
+  if (!state.buckets) {
+    // Mit userId + withPartners zählt Immich auch Fotos von Partnern (z. B. die Familien-Bibliothek bei Greta) mit,
+    // genauso wie die Suche in "Alle Fotos". Der Endpunkt ist bei Immich als "intern" markiert.
+    if (!state.userId) state.userId = (await api("/users/me")).id;
+    const list = await api(`/timeline/buckets?visibility=timeline&order=desc&userId=${state.userId}&withPartners=true`);
+    state.buckets = list.map((b) => {
+      const d = new Date(b.timeBucket), y = d.getUTCFullYear(), m = d.getUTCMonth();
+      return { raw: b.timeBucket, year: y, month: m, count: b.count, start: new Date(Date.UTC(y, m, 1)).toISOString(), end: new Date(Date.UTC(y, m + 1, 1)).toISOString() };
+    }).sort((a, b) => b.year - a.year || b.month - a.month);
+    state.bucketsAt = Date.now();
+  }
+  return state.buckets;
+}
+function makeCard(label, sub, after, before, size, big, onClick) {
+  const c = el("button", "card" + (big ? " big" : ""));
+  Object.assign(c.dataset, { after, before, size });
+  const cap = el("div", "card-cap"); cap.append(el("b", null, label), el("span", null, sub));
+  c.append(cap); c.onclick = onClick; coverObserver.observe(c);
+  return c;
+}
+async function showOverview(restore) {
+  const mode = state.mode, token = ++state.overviewToken;
+  let buckets;
+  try { buckets = await loadBuckets(); } catch (e) { if (e.message !== "401" && token === state.overviewToken) showError("Fehler: " + e.message); return; }
+  if (token !== state.overviewToken || state.view !== "library" || mode !== state.mode) return;
+  if (!buckets.length) $("#empty").classList.remove("hidden");
+  const content = $("#content"); content.replaceChildren();
+  const wrap = el("div", "overview" + (mode === "years" ? " years" : ""));
+  for (const y of [...new Set(buckets.map((b) => b.year))]) {
+    const ofYear = buckets.filter((b) => b.year === y), total = ofYear.reduce((n, b) => n + b.count, 0);
+    if (mode === "years") {
+      wrap.append(makeCard(String(y), `${nf.format(total)} Objekte`, new Date(Date.UTC(y, 0, 1)).toISOString(), new Date(Date.UTC(y + 1, 0, 1)).toISOString(), "preview", true, () => {
+        state.mode = "months"; store.set("mode", "months"); state.pendingYear = y; showLibrary();
+      }));
+    } else {
+      const head = el("div", "ov-year", String(y)); head.id = "y" + y; wrap.append(head);
+      const g = el("div", "cards");
+      for (const b of ofYear) {
+        g.append(makeCard(MONTHS[b.month], `${nf.format(b.count)} Objekte`, b.start, b.end, "thumbnail", false, () => {
+          state.scroll.months = $("#main").scrollTop;
+          location.hash = `#/month/${b.year}-${String(b.month + 1).padStart(2, "0")}`;
+        }));
+      }
+      wrap.append(g);
+    }
+  }
+  content.append(wrap);
+  const main = $("#main");
+  if (state.pendingYear != null) { const t = document.getElementById("y" + state.pendingYear); state.pendingYear = null; if (t) main.scrollTop = t.offsetTop - 70; }
+  else main.scrollTop = restore ? state.scroll[mode] || 0 : 0;
+}
+function showLibrary(restore) {
+  state.view = "library";
+  if (state.mode === "all") {
+    showFeed({ visibility: "timeline" }, "Mediathek", { seg: true, makeFeed: () => libraryFeed(null, { visibility: "timeline" }) }); state.view = "library";
+  } else {
+    resetView(); state.view = "library";
+    setHeader("Mediathek", { seg: true }); syncControls();
+    showOverview(restore);
+  }
+}
+const libParams = () => ({ visibility: "timeline", order: "desc", userId: state.userId, withPartners: "true" });
+// Mediathek-Feed über die Zeitleisten-Schnittstelle (userId + withPartners: Partnerfotos zählen mit, wie in der Suche).
+const libraryFeed = (buckets, fallbackFilters) => new BucketFeed({}, {
+  buckets, fallback: { filters: fallbackFilters, opts: {} },
+  prepare: async (f) => { if (!state.userId) state.userId = (await api("/users/me")).id; f.params = libParams(); },
+});
+function showMonth(ym) {
+  const [y, m] = ym.split("-").map(Number);
+  const raw = (state.buckets && (state.buckets.find((b) => b.year === y && b.month === m) || {}).raw) || new Date(Date.UTC(y, m - 1, 1)).toISOString();
+  const fb = { visibility: "timeline", takenAfter: new Date(Date.UTC(y, m - 1, 1)).toISOString(), takenBefore: new Date(Date.UTC(y, m, 1)).toISOString() };
+  showFeed({}, `${MONTHS[m - 1]} ${y}`, { back: true, makeFeed: () => libraryFeed([raw], fb) });
+}
+function showSearch(q) {
+  state.view = "search";
+  $("#searchInput").value = q;
+  showFeed({ query: q, visibility: "timeline" }, `Suche: ${q}`, {
+    back: true, noDate: true,
+    feedOpts: { endpoint: "/search/smart", size: 100, fallback: { endpoint: "/search/metadata", filters: { originalFileName: q, visibility: "timeline" } } },
+  });
+}
+async function showAlbums() {
+  resetView(); setHeader("Alben");
+  let albums;
+  try { albums = await loadSidebarAlbums(); } catch (e) { if (e.message !== "401") showError("Fehler: " + e.message); return; }
+  if (location.hash !== "#/albums") return;
+  const wrap = el("div", "albums");
+  for (const a of [...albums].sort((x, y) => (y.endDate || "").localeCompare(x.endDate || ""))) {
+    const b = el("button", "album"), cover = el("div", "cover");
+    if (a.albumThumbnailAssetId) { const i = el("img"); i.loading = "lazy"; i.alt = ""; i.src = img(a.albumThumbnailAssetId, "thumbnail"); i.onerror = () => i.remove(); cover.append(i); }
+    b.append(cover, el("b", null, a.albumName), el("small", null, `${nf.format(a.assetCount)} Objekte`));
+    b.onclick = () => (location.hash = "#/album/" + a.id + "/" + encodeURIComponent(a.albumName));
+    wrap.append(b);
+  }
+  $("#content").append(wrap);
+  if (!albums.length) $("#empty").classList.remove("hidden");
+}
+const albumsSig = (list) => JSON.stringify((list || []).map((a) => [a.id, a.albumName, a.assetCount, a.albumThumbnailAssetId]));
+async function loadSidebarAlbums() {
+  const albums = await api("/albums");
+  state.albumsSig = albumsSig(albums); state.albumsAt = Date.now();
+  state.albums = [...albums].sort((x, y) => x.albumName.localeCompare(y.albumName, "de"));
+  const nav = $("#sideAlbums"); nav.replaceChildren();
+  for (const a of state.albums) {
+    const link = el("a"); link.href = "#/album/" + a.id + "/" + encodeURIComponent(a.albumName); link.dataset.albumId = a.id;
+    if (a.albumThumbnailAssetId) { const i = el("img"); i.loading = "lazy"; i.alt = ""; i.src = img(a.albumThumbnailAssetId, "thumbnail"); i.onerror = () => i.remove(); link.append(i); }
+    else link.append(el("span", "ph"));
+    link.append(el("span", null, a.albumName)); nav.append(link);
+  }
+  markActive();
+  return albums;
+}
+
+// Alben bei Änderungen (auch aus anderen Fenstern oder der Immich-Weboberfläche) nachziehen:
+// beim Zurückkehren zum Tab, beim Navigieren und alle 60 Sekunden.
+let albumsBusy = false;
+async function refreshAlbums(force) {
+  if (albumsBusy || $("#app").classList.contains("hidden")) return;
+  if (!force && Date.now() - (state.albumsAt || 0) < 8000) return;
+  albumsBusy = true;
+  try {
+    const before = state.albumsSig;
+    await loadSidebarAlbums();
+    if (before && before !== state.albumsSig) {
+      state.buckets = null;
+      const [, name, id] = location.hash.split("/");
+      if (name === "albums" || name === "collections") route();
+      else if (name === "album") {
+        const cur = state.albums.find((a) => a.id === id), old = JSON.parse(before).find((a) => a[0] === id);
+        if (cur && old && cur.assetCount !== old[2]) route(); // Inhalt des geöffneten Albums hat sich geändert
+      }
+    }
+  } catch {} finally { albumsBusy = false; }
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshAlbums(true); });
+addEventListener("focus", () => refreshAlbums(false));
+setInterval(() => { if (!document.hidden) refreshAlbums(true); }, 60000);
+
+// ---------- Personen ----------
+const personAvatar = (id, cls) => { const i = el("img"); i.alt = ""; i.loading = "lazy"; i.src = `/api/people/${id}/thumbnail`; i.onerror = () => { const ph = el("span", "ph"); i.replaceWith(ph); }; return i; };
+function personCard(p) {
+  const b = el("button", "person"); b.append(personAvatar(p.id), el("b", null, p.name || "Unbenannt"));
+  b.onclick = () => (location.hash = `#/person/${p.id}/${encodeURIComponent(p.name || "Person")}`); return b;
+}
+const sortPeople = (list) => [...list].sort((a, b) => (!!b.name - !!a.name) || (a.name || "").localeCompare(b.name || "", "de"));
+async function showPeople() {
+  resetView(); setHeader("Personen");
+  const wrap = el("div", "people"); $("#content").append(wrap);
+  const token = state.overviewToken; let page = 1, more = null;
+  const load = async () => {
+    try {
+      const r = await api(`/people?withHidden=false&size=120&page=${page}`);
+      if (token !== state.overviewToken) return;
+      // innerhalb einer Seite: benannte zuerst
+      for (const p of sortPeople(r.people)) wrap.append(personCard(p));
+      if (more) more.remove(); more = null;
+      if (r.hasNextPage) { page++; more = el("button", "pill more", "Mehr anzeigen"); more.onclick = load; $("#content").append(more); }
+      if (page === 1 && !r.people.length) $("#empty").classList.remove("hidden");
+    } catch (e) { if (e.message !== "401") showError("Fehler: " + e.message); }
+  };
+  await load();
+}
+function showPerson(id, name) {
+  showFeed({ personIds: [id], visibility: "timeline" }, name, {
+    back: true,
+    makeFeed: () => new BucketFeed({ personId: id, order: "desc" }, { fallback: { filters: { personIds: [id], visibility: "timeline" }, opts: {} } }),
+  });
+}
+
+// ---------- Sammlungen ----------
+async function showCollections() {
+  resetView(); setHeader("Sammlungen");
+  const token = state.overviewToken, root = el("div", "coll"); $("#content").append(root);
+  const section = (title, link) => { const h = el("h3"); h.append(el("span", null, title)); if (link) { const a = el("a", null, "Alle anzeigen"); a.href = link; h.append(a); } const strip = el("div", "strip"); root.append(h, strip); return strip; };
+  const alive = () => token === state.overviewToken;
+  const quick = section("Medientypen"), qs = el("div", "maprow"); quick.replaceWith(qs);
+  for (const [label, href] of [["Favoriten", "#/favorites"], ["Videos", "#/videos"], ["Live Photos", "#/live"], ["Karte", "#/map"]]) { const a = el("a", null, label); a.href = href; qs.append(a); }
+  const people = section("Personen", "#/people"), places = section("Orte"), albums = section("Alben", "#/albums");
+  const drop = (strip) => { if (strip.previousSibling) strip.previousSibling.remove(); strip.remove(); }; // leere Abschnitte ausblenden
+  api("/people?withHidden=false&size=40&page=1").then((r) => { if (!alive()) return; for (const p of sortPeople(r.people).filter((p) => p.name).slice(0, 20)) people.append(personCard(p)); if (!people.children.length) drop(people); }).catch(() => drop(people));
+  api("/search/cities").then((r) => {
+    if (!alive()) return;
+    for (const a of r.slice(0, 60)) {
+      const city = a.exifInfo && a.exifInfo.city; if (!city) continue;
+      const b = el("button", "tilecard"); const hash = ThumbHash.toDataURL(a.thumbhash); if (hash) b.style.backgroundImage = `url(${hash})`;
+      const i = el("img"); i.alt = ""; i.loading = "lazy"; i.src = img(a.id, "thumbnail"); i.onerror = () => i.remove(); b.append(i, el("span", null, city));
+      b.onclick = () => (location.hash = "#/place/" + encodeURIComponent(city)); places.append(b);
+    }
+    if (!places.children.length) drop(places);
+  }).catch(() => drop(places));
+  const albumList = state.albums || await loadSidebarAlbums().then(() => state.albums).catch(() => []);
+  if (alive()) {
+    for (const a of albumList.slice(0, 30)) {
+      const b = el("button", "tilecard"); if (a.albumThumbnailAssetId) { const i = el("img"); i.alt = ""; i.loading = "lazy"; i.src = img(a.albumThumbnailAssetId, "thumbnail"); i.onerror = () => i.remove(); b.append(i); }
+      b.append(el("span", null, a.albumName)); b.onclick = () => (location.hash = "#/album/" + a.id + "/" + encodeURIComponent(a.albumName)); albums.append(b);
+    }
+    if (!albums.children.length) drop(albums);
+  }
+}
+
+// ---------- Karte (eigene schlanke Kartenansicht mit OpenStreetMap-Kacheln) ----------
+const WORLD = (z) => 256 * 2 ** z;
+const lon2x = (lon, z) => ((lon + 180) / 360) * WORLD(z);
+const lat2y = (lat, z) => { const r = (Math.max(-85.0511, Math.min(85.0511, lat)) * Math.PI) / 180; return ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * WORLD(z); };
+const x2lon = (x, z) => (x / WORLD(z)) * 360 - 180;
+const y2lat = (y, z) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / WORLD(z)))) * 180) / Math.PI;
+async function showMap() {
+  resetView(); setHeader("Karte");
+  const wrap = el("div", "mapwrap"), tilesEl = el("div", "tiles"), pinsEl = el("div", "pins");
+  const ctl = el("div", "map-ctl"), zi = el("button", null, "+"), zo = el("button", null, "−"); ctl.append(zi, zo);
+  const attr = el("div", "map-attr"); attr.append("© "); const ol = el("a", null, "OpenStreetMap"); ol.href = "https://www.openstreetmap.org/copyright"; ol.target = "_blank"; ol.rel = "noopener"; attr.append(ol);
+  wrap.append(tilesEl, pinsEl, ctl, attr); $("#content").append(wrap);
+  const token = state.overviewToken; $("#main").style.overflow = "hidden";
+  let markers;
+  try {
+    if (!state.markers || Date.now() - state.markersAt > 300000) { state.markers = await api("/map/markers?withPartners=true"); state.markersAt = Date.now(); }
+    markers = state.markers;
+  } catch (e) { $("#main").style.overflow = ""; if (e.message !== "401") showError("Fehler: " + e.message); return; }
+  if (token !== state.overviewToken) { return; }
+  if (!markers.length) { $("#empty h2").textContent = "Keine Fotos mit Ortsangabe"; $("#empty").classList.remove("hidden"); wrap.remove(); $("#main").style.overflow = ""; return; }
+  const pts = markers.filter((m) => m.lat != null && m.lon != null);
+  let W = wrap.clientWidth, H = wrap.clientHeight;
+  // Startansicht: letzte Position, sonst alle Fotos im Bild
+  let view = state.mapView;
+  if (!view) {
+    const minLat = Math.min(...pts.map((p) => p.lat)), maxLat = Math.max(...pts.map((p) => p.lat)), minLon = Math.min(...pts.map((p) => p.lon)), maxLon = Math.max(...pts.map((p) => p.lon));
+    let z = 16; while (z > 2 && (lon2x(maxLon, z) - lon2x(minLon, z) > W * 0.85 || lat2y(minLat, z) - lat2y(maxLat, z) > H * 0.85)) z--;
+    view = { z, cx: (lon2x(minLon, z) + lon2x(maxLon, z)) / 2, cy: (lat2y(minLat, z) + lat2y(maxLat, z)) / 2 };
+  }
+  state.mapView = view;
+  let clusters = null, clusterZ = -1;
+  const buildClusters = () => {
+    const z = view.z, cell = 64, map = new Map();
+    for (const p of pts) {
+      const x = lon2x(p.lon, z), y = lat2y(p.lat, z), key = Math.floor(x / cell) * 100003 + Math.floor(y / cell);
+      let c = map.get(key);
+      if (!c) map.set(key, (c = { n: 0, sx: 0, sy: 0, minLat: p.lat, maxLat: p.lat, minLon: p.lon, maxLon: p.lon, id: p.id }));
+      c.n++; c.sx += x; c.sy += y; c.minLat = Math.min(c.minLat, p.lat); c.maxLat = Math.max(c.maxLat, p.lat); c.minLon = Math.min(c.minLon, p.lon); c.maxLon = Math.max(c.maxLon, p.lon);
+    }
+    clusters = [...map.values()].map((c) => ({ ...c, x: c.sx / c.n, y: c.sy / c.n })); clusterZ = z;
+  };
+  const tileNodes = new Map(), pinNodes = new Map();
+  const render = () => {
+    if (token !== state.overviewToken) return;
+    W = wrap.clientWidth; H = wrap.clientHeight;
+    const z = view.z, left = view.cx - W / 2, top = view.cy - H / 2, n = 2 ** z;
+    // Kacheln
+    const x0 = Math.floor(left / 256), x1 = Math.floor((left + W) / 256), y0 = Math.max(0, Math.floor(top / 256)), y1 = Math.min(n - 1, Math.floor((top + H) / 256));
+    const want = new Set();
+    for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
+      const key = `${z}/${tx}/${ty}`; want.add(key);
+      let node = tileNodes.get(key);
+      if (!node) { node = el("img"); node.alt = ""; node.draggable = false; node.src = `https://tile.openstreetmap.org/${z}/${((tx % n) + n) % n}/${ty}.png`; tilesEl.append(node); tileNodes.set(key, node); }
+      node.style.transform = `translate(${tx * 256 - left}px,${ty * 256 - top}px)`;
+    }
+    for (const [k, node] of tileNodes) if (!want.has(k)) { node.remove(); tileNodes.delete(k); }
+    // Fotogruppen
+    if (clusterZ !== z) { buildClusters(); for (const nd of pinNodes.values()) nd.remove(); pinNodes.clear(); }
+    const seen = new Set();
+    clusters.forEach((c, idx) => {
+      const px = c.x - left, py = c.y - top; if (px < -60 || py < -60 || px > W + 60 || py > H + 60) return;
+      seen.add(idx); let nd = pinNodes.get(idx);
+      if (!nd) {
+        nd = el("button", "pin"); const i = el("img"); i.alt = ""; i.src = img(c.id, "thumbnail"); i.onerror = () => i.remove(); nd.append(i);
+        if (c.n > 1) nd.append(el("b", null, c.n > 999 ? Math.round(c.n / 100) / 10 + "k" : String(c.n)));
+        nd.onclick = (e) => { e.stopPropagation(); const pad = 0.0005; state.mapView = view; location.hash = `#/bbox/${[c.minLon - pad, c.minLat - pad, c.maxLon + pad, c.maxLat + pad].map((v) => v.toFixed(5)).join(",")}`; };
+        pinsEl.append(nd); pinNodes.set(idx, nd);
+      }
+      nd.style.transform = `translate(${px}px,${py}px)`; nd.style.left = "0"; nd.style.top = "0";
+    });
+    for (const [k, nd] of pinNodes) if (!seen.has(k)) { nd.remove(); pinNodes.delete(k); }
+  };
+  let raf = 0; const schedule = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; render(); }); };
+  const zoomTo = (nz, sx, sy) => {
+    nz = Math.max(2, Math.min(18, nz)); if (nz === view.z) return;
+    const k = 2 ** (nz - view.z), ox = sx - W / 2, oy = sy - H / 2;
+    view.cx = (view.cx + ox) * k - ox; view.cy = (view.cy + oy) * k - oy; view.z = nz; schedule();
+  };
+  zi.onclick = () => zoomTo(view.z + 1, W / 2, H / 2); zo.onclick = () => zoomTo(view.z - 1, W / 2, H / 2);
+  let wheelAt = 0;
+  wrap.addEventListener("wheel", (e) => { e.preventDefault(); if (Date.now() - wheelAt < 220) return; wheelAt = Date.now(); const r = wrap.getBoundingClientRect(); zoomTo(view.z + (e.deltaY < 0 ? 1 : -1), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+  wrap.addEventListener("dblclick", (e) => { const r = wrap.getBoundingClientRect(); zoomTo(view.z + 1, e.clientX - r.left, e.clientY - r.top); });
+  const ptr = new Map(); let pd = 0;
+  wrap.addEventListener("pointerdown", (e) => { if (e.target.closest(".pin,.map-ctl")) return; wrap.setPointerCapture(e.pointerId); ptr.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (ptr.size === 2) { const [a, b] = [...ptr.values()]; pd = Math.hypot(a.x - b.x, a.y - b.y); } });
+  wrap.addEventListener("pointermove", (e) => {
+    const p = ptr.get(e.pointerId); if (!p) return;
+    if (ptr.size === 1) { view.cx -= e.clientX - p.x; view.cy -= e.clientY - p.y; schedule(); }
+    p.x = e.clientX; p.y = e.clientY;
+    if (ptr.size === 2) { const [a, b] = [...ptr.values()], d = Math.hypot(a.x - b.x, a.y - b.y), r = wrap.getBoundingClientRect(); if (pd && (d / pd > 1.5 || d / pd < 0.67)) { zoomTo(view.z + (d > pd ? 1 : -1), (a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top); pd = d; } }
+  });
+  const up = (e) => { ptr.delete(e.pointerId); pd = 0; };
+  wrap.addEventListener("pointerup", up); wrap.addEventListener("pointercancel", up);
+  render();
+}
+function showBBox(bbox) {
+  showFeed({}, "Ort auf der Karte", {
+    back: true,
+    makeFeed: () => new BucketFeed({}, {
+      prepare: async (f) => { if (!state.userId) state.userId = (await api("/users/me")).id; f.params = { visibility: "timeline", order: "desc", userId: state.userId, withPartners: "true", bbox }; },
+    }),
+  });
+}
+
+// ---------- Routing ----------
+function markActive() {
+  const [, name = "photos", id] = location.hash.split("/");
+  const main = { album: "", search: "", month: "photos", person: "people", bbox: "map", place: "collections", live: "collections" }[name] ?? name;
+  document.querySelectorAll("#mainNav a").forEach((a) => a.classList.toggle("active", a.dataset.route === main));
+  document.querySelectorAll("#sideAlbums a").forEach((a) => a.classList.toggle("active", name === "album" && a.dataset.albumId === id));
+}
+let lastName = "";
+function route() {
+  const [, name = "photos", id, title] = location.hash.split("/");
+  markActive(); refreshAlbums(false);
+  const restore = lastName === "month" && name === "photos"; // Zurück aus einem Monat: Scrollposition wiederherstellen
+  lastName = name; state.view = name;
+  if (name !== "search") $("#searchInput").value = "";
+  if (name === "albums") showAlbums();
+  else if (name === "album") showFeed({ albumIds: [id] }, decodeURIComponent(title || "Album"), { back: true, makeFeed: () => new BucketFeed({ albumId: id, order: "desc" }, { fallback: { filters: { albumIds: [id] }, opts: {} } }) });
+  else if (name === "month") showMonth(id);
+  else if (name === "search") showSearch(decodeURIComponent(id || ""));
+  else if (name === "collections") showCollections();
+  else if (name === "people") showPeople();
+  else if (name === "person") showPerson(id, decodeURIComponent(title || "Person"));
+  else if (name === "map") showMap();
+  else if (name === "bbox") showBBox(decodeURIComponent(id || ""));
+  else if (name === "place") { const c = decodeURIComponent(id || ""); showFeed({ city: c, visibility: "timeline" }, c, { back: true }); }
+  else if (name === "live") showFeed({ isMotion: true, visibility: "timeline" }, "Live Photos", { back: true });
+  else if (name === "favorites") { showFeed({ isFavorite: true }, "Favoriten"); state.view = "favorites"; }
+  else if (name === "videos") { showFeed({ type: "VIDEO", visibility: "timeline" }, "Videos"); state.view = "videos"; }
+  else showLibrary(restore);
+}
+addEventListener("hashchange", () => { if (!$("#app").classList.contains("hidden")) route(); });
+$("#back").onclick = () => history.back();
+$("#seg").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b || b.dataset.mode === state.mode) return;
+  state.mode = b.dataset.mode; store.set("mode", state.mode); showLibrary();
+});
+$("#searchForm").addEventListener("submit", (e) => {
+  e.preventDefault(); const q = $("#searchInput").value.trim();
+  if (q) location.hash = "#/search/" + encodeURIComponent(q);
+});
+
+// ---------- Viewer ----------
+let vIndex = -1;
+const vz = { s: 1, x: 0, y: 0 };
+const infoCache = new Map();
+const curItem = () => (state.feed && vIndex >= 0 ? state.feed.items[vIndex] : null);
+function openViewer(i) { vIndex = i; $("#viewer").classList.remove("hidden"); showViewer(); }
+function closeViewer() {
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  vIndex = -1; $("#viewer").classList.remove("immersive"); $("#viewer").classList.add("hidden"); $("#vStage").replaceChildren(); $("#vPanel").classList.add("hidden");
+}
+// Maximieren: echtes Vollbild (wo der Browser es erlaubt, z. B. Mac, PC, iPad), sonst nur alle Bedienelemente ausblenden.
+const setImmersive = (on) => $("#viewer").classList.toggle("immersive", on);
+function toggleFullscreen() {
+  const v = $("#viewer");
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  else if (v.classList.contains("immersive")) setImmersive(false);
+  else if (v.requestFullscreen) {
+    // Wird Vollbild abgelehnt oder gar nicht umgesetzt (z. B. iPhone, eingebettete Browser), reicht das Ausblenden der Bedienelemente.
+    v.requestFullscreen().catch(() => setImmersive(true));
+    setTimeout(() => { if (!document.fullscreenElement) setImmersive(true); }, 350);
+  } else setImmersive(true);
+}
+document.addEventListener("fullscreenchange", () => setImmersive(!!document.fullscreenElement));
+$("#vFull").onclick = toggleFullscreen;
+function applyZoom() {
+  const i = $("#vStage img"); if (i) i.style.transform = vz.s === 1 ? "" : `translate(${vz.x}px,${vz.y}px) scale(${vz.s})`;
+  $("#vStage").classList.toggle("zoomed", vz.s > 1);
+}
+function resetZoom() { vz.s = 1; vz.x = vz.y = 0; applyZoom(); }
+function zoomAt(cx, cy, factor) {
+  const r = $("#vStage").getBoundingClientRect(), ox = cx - (r.left + r.width / 2), oy = cy - (r.top + r.height / 2);
+  const ns = Math.min(8, Math.max(1, vz.s * factor));
+  if (ns === 1) { vz.x = vz.y = 0; } else { vz.x = ox - ((ox - vz.x) * ns) / vz.s; vz.y = oy - ((oy - vz.y) * ns) / vz.s; }
+  vz.s = ns; applyZoom();
+}
+function showViewer() {
+  const a = curItem(); if (!a) return closeViewer();
+  const stage = $("#vStage"); stage.replaceChildren(); resetZoom();
+  if (a.type === "VIDEO") {
+    const v = el("video"); v.controls = true; v.autoplay = true; v.playsInline = true;
+    v.poster = img(a.id, "preview"); v.src = `/api/assets/${a.id}/video/playback`; stage.append(v);
+  } else {
+    const i = el("img"); i.alt = ""; i.draggable = false; i.src = img(a.id, "preview");
+    i.onerror = () => { stage.replaceChildren(el("p", null, "Keine Vorschau verfügbar")); stage.firstChild.style.color = "#fff"; };
+    stage.append(i);
+  }
+  $("#vFav").textContent = a.isFavorite ? "♥" : "♡";
+  const infoLine = () => $("#vInfo").replaceChildren(el("span", null, `${a.originalFileName || ""}${a._date ? " · " + dateFmt.format(a._date) : ""}`));
+  infoLine();
+  if (!a.originalFileName) { // Zeitleisten-Daten enthalten keinen Dateinamen: bei Bedarf nachladen
+    (infoCache.get(a.id) ? Promise.resolve(infoCache.get(a.id)) : api(`/assets/${a.id}`).then((i) => (infoCache.set(a.id, i), i)))
+      .then((i) => { a.originalFileName = i.originalFileName || ""; if (curItem() === a) infoLine(); }).catch(() => {});
+  }
+  if (!$("#vPanel").classList.contains("hidden")) showInfoPanel();
+  if (vIndex > state.feed.items.length - 20) loadMore();
+}
+const step = (d) => { if (vIndex < 0) return; const n = vIndex + d; if (n >= 0 && n < state.feed.items.length) { vIndex = n; showViewer(); } };
+async function showInfoPanel() {
+  const a = curItem(), panel = $("#vPanel"); if (!a) return;
+  panel.classList.remove("hidden"); panel.replaceChildren(el("p", null, "Lade …"));
+  let info = infoCache.get(a.id);
+  try { if (!info) { info = await api(`/assets/${a.id}`); infoCache.set(a.id, info); } } catch (e) { panel.replaceChildren(el("p", null, "Fehler: " + e.message)); return; }
+  if (curItem()?.id !== a.id) return;
+  const x = info.exifInfo || {}, dl = el("dl");
+  const add = (k, v) => { if (v != null && v !== "") { dl.append(el("dt", null, k)); const dd = el("dd"); if (v instanceof Node) dd.append(v); else dd.textContent = v; dl.append(dd); } };
+  const d = new Date(info.localDateTime || info.fileCreatedAt);
+  add("Datum", isNaN(d) ? null : dateFmt.format(d));
+  add("Größe", x.fileSizeInByte ? fmtBytes(x.fileSizeInByte) : null);
+  add("Auflösung", x.exifImageWidth && x.exifImageHeight ? `${x.exifImageWidth} × ${x.exifImageHeight} px (${((x.exifImageWidth * x.exifImageHeight) / 1e6).toFixed(1).replace(".", ",")} MP)` : null);
+  add("Kamera", [x.make, x.model].filter(Boolean).join(" "));
+  add("Objektiv", x.lensModel);
+  add("Belichtung", [x.fNumber && `ƒ/${x.fNumber}`, x.exposureTime && `${x.exposureTime} s`, x.iso && `ISO ${x.iso}`, x.focalLength && `${x.focalLength} mm`].filter(Boolean).join("  ·  "));
+  add("Ort", [x.city, x.state, x.country].filter(Boolean).join(", "));
+  if (x.latitude != null && x.longitude != null) { const l = el("a", null, `${x.latitude.toFixed(4)}, ${x.longitude.toFixed(4)}`); l.href = `https://www.openstreetmap.org/?mlat=${x.latitude}&mlon=${x.longitude}#map=15/${x.latitude}/${x.longitude}`; l.target = "_blank"; l.rel = "noopener"; add("Koordinaten", l); }
+  add("Beschreibung", x.description);
+  add("Besitzer", info.owner && info.owner.name);
+  add("Typ", info.originalMimeType);
+  panel.replaceChildren(el("h4", null, info.originalFileName || a.originalFileName || ""), dl);
+}
+$("#vClose").onclick = closeViewer; $("#vPrev").onclick = () => step(-1); $("#vNext").onclick = () => step(1);
+$("#vInfoBtn").onclick = () => ($("#vPanel").classList.contains("hidden") ? showInfoPanel() : $("#vPanel").classList.add("hidden"));
+$("#vFav").onclick = guard(async () => { const a = curItem(); if (!a) return; await setFavorite([a], !a.isFavorite); $("#vFav").textContent = a.isFavorite ? "♥" : "♡"; });
+$("#vDl").onclick = guard(async () => { const a = curItem(); if (a) await downloadItems([a]); });
+$("#vDel").onclick = guard(async () => {
+  const a = curItem(); if (!a) return; const idx = vIndex;
+  if (await deleteItems([a])) { if (!state.feed.items.length) return closeViewer(); vIndex = Math.min(idx, state.feed.items.length - 1); showViewer(); }
+});
+addEventListener("keydown", (e) => {
+  if (vIndex < 0 || (e.target.closest && e.target.closest("input,textarea"))) return;
+  if (e.key === "Escape") { if ($("#viewer").classList.contains("immersive")) setImmersive(false); else closeViewer(); }
+  else if (e.key === "f" || e.key === "F") toggleFullscreen(); else if (e.key === "ArrowLeft") step(-1); else if (e.key === "ArrowRight") step(1);
+  else if (e.key === "i") $("#vInfoBtn").click(); else if (e.key === "+" || e.key === "=") zoomAt(innerWidth / 2, innerHeight / 2, 1.4); else if (e.key === "-") zoomAt(innerWidth / 2, innerHeight / 2, 1 / 1.4);
+});
+// Zoomen (Mausrad, Doppelklick, Zwei-Finger-Geste), Verschieben, Wischen zum Blättern
+const stage = $("#vStage"), ptrs = new Map();
+let pinch0 = 0, pinchS = 1, downX = 0, downY = 0, moved = false;
+stage.addEventListener("wheel", (e) => { if (e.target.tagName === "VIDEO") return; e.preventDefault(); zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0018))); }, { passive: false });
+let tapTimer = 0;
+stage.addEventListener("dblclick", (e) => { clearTimeout(tapTimer); if (e.target.tagName === "VIDEO") return; if (vz.s > 1) resetZoom(); else zoomAt(e.clientX, e.clientY, 2.5); });
+stage.addEventListener("pointerdown", (e) => {
+  if (e.target.tagName === "VIDEO") return;
+  stage.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (ptrs.size === 1) { downX = e.clientX; downY = e.clientY; moved = false; }
+  if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); pinchS = vz.s; }
+});
+stage.addEventListener("pointermove", (e) => {
+  const p = ptrs.get(e.pointerId); if (!p) return;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+  if (ptrs.size === 2) {
+    const [a, b] = [...ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
+    if (pinch0) zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, (pinchS * d) / pinch0 / vz.s);
+  } else if (vz.s > 1) { vz.x += dx; vz.y += dy; moved = true; applyZoom(); }
+});
+const endPtr = (e) => {
+  if (!ptrs.has(e.pointerId)) return;
+  const wasSingle = ptrs.size === 1; ptrs.delete(e.pointerId);
+  const dx = e.clientX - downX, dy = e.clientY - downY;
+  if (wasSingle && vz.s === 1 && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) step(dx < 0 ? 1 : -1);
+  else if (wasSingle && Math.hypot(dx, dy) < 6 && !moved) { // einfacher Klick/Tipp: Bedienelemente aus- bzw. einblenden
+    clearTimeout(tapTimer); tapTimer = setTimeout(() => setImmersive(!$("#viewer").classList.contains("immersive")), 260);
+  }
+  pinch0 = 0;
+};
+stage.addEventListener("pointerup", endPtr); stage.addEventListener("pointercancel", endPtr);
+
+// ---------- Start ----------
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+fetch("/api/users/me", { credentials: "same-origin" }).then((r) => (r.ok ? showApp() : showLogin())).catch(showLogin);
