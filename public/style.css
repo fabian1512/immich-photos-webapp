@@ -76,7 +76,8 @@ main{position:relative;overflow-y:auto;height:100%}
   #searchForm{display:none;position:fixed;left:16px;right:16px;bottom:calc(86px + env(safe-area-inset-bottom));z-index:30;padding:8px;border-radius:18px;background:var(--bar-bg);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 4px 24px #0004}
   aside.search-open #searchForm{display:block!important}
   #searchInput{font-size:16px}
-  .topbar{grid-template-columns:1fr auto;padding:0 12px}.seg{grid-column:1/-1;grid-row:2;justify-self:center}.topbar{height:auto;min-height:var(--bar);padding-bottom:8px}
+  .topbar{grid-template-columns:1fr auto;padding:0 12px}
+  .seg,.zoom{display:none!important}
   .viewer ~ .tabbar,body:has(#viewer:not(.hidden)) .tabbar,body:has(#viewer:not(.hidden)) .search-btn{display:none}
 }
 .overview{padding:0 0 120px}
