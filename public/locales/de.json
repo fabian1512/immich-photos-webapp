@@ -131,5 +131,16 @@
   "people.removeFace": "Dieses Gesicht entfernen",
   "people.removeFaceConfirm": "Dieses Gesicht vom Foto entfernen?",
   "people.showHidden": "Ausgeblendete zeigen",
-  "people.hideHidden": "Ausgeblendete verbergen"
+  "people.hideHidden": "Ausgeblendete verbergen",
+  "people.share": "Personen teilen …",
+  "people.sharedWithYou": "Mit dir geteilt",
+  "people.shareTitle": "Personen teilen",
+  "people.shareHint": "Gibt den gewählten Benutzern Zugriff auf alle deine Personen. Es werden keine Fotos freigegeben.",
+  "people.shareRole": "Zugriff",
+  "people.role.read": "Nur ansehen",
+  "people.role.write": "Ansehen und bearbeiten",
+  "people.role.admin": "Vollzugriff",
+  "people.shareGo": "Teilen",
+  "people.shareNoUsers": "Es gibt keine anderen Benutzer.",
+  "people.shared": "Mit {count} Benutzer(n) geteilt"
 }

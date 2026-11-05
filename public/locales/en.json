@@ -131,5 +131,16 @@
   "people.removeFace": "Remove this face",
   "people.removeFaceConfirm": "Remove this face from the photo?",
   "people.showHidden": "Show hidden",
-  "people.hideHidden": "Hide hidden"
+  "people.hideHidden": "Hide hidden",
+  "people.share": "Share people …",
+  "people.sharedWithYou": "Shared with you",
+  "people.shareTitle": "Share people",
+  "people.shareHint": "Gives the selected users access to all of your people. No photos are shared.",
+  "people.shareRole": "Access",
+  "people.role.read": "View only",
+  "people.role.write": "View and edit",
+  "people.role.admin": "Full access",
+  "people.shareGo": "Share",
+  "people.shareNoUsers": "There are no other users.",
+  "people.shared": "Shared with {count} user(s)"
 }

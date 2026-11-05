@@ -78,6 +78,9 @@ const api = http.createServer(async (req, res) => {
   // ---- people editing (in memory only) ----
   const dto = (x) => ({ id: x.id, name: x.name, birthDate: x.birthDate || null, isHidden: !!x.isHidden, isFavorite: !!x.isFavorite });
   const live = () => PEOPLE.filter((x) => !x.removed);
+  if (p === "/users" && m === "GET") return json(res, [{ id: "u1", name: "Demo User", email: "demo@example.com" }, { id: "u2", name: "Alex", email: "alex@example.com" }]);
+  if (p === "/people/users" && m === "PUT") { await readBody(req); res.writeHead(204); return res.end(); }
+  if (p === "/people" && m === "GET" && q.get("sharedWithId")) return json(res, { total: 0, hidden: 0, hasNextPage: false, people: [] });
   if (p === "/people" && m === "GET") {
     const wh = q.get("withHidden") === "true", list = live().filter((x) => wh || !x.isHidden).sort((a, b) => (!!b.isFavorite - !!a.isFavorite) || (!!b.name - !!a.name));
     return json(res, { total: list.length, hidden: live().filter((x) => x.isHidden).length, hasNextPage: false, people: list.map(dto) });

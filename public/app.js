@@ -594,11 +594,24 @@ function personCard(p) {
 }
 // Keep the order the Immich API returns: favorites first, then named people, then by number of photos.
 async function showPeople(withHidden = false) {
-  resetView(); setHeader(tr("nav.people"));
+  resetView(); setHeader(tr("nav.people")); const token = state.overviewToken;
   const bar = el("div", "people-bar"), toggle = el("button", "pill", withHidden ? tr("people.hideHidden") : tr("people.showHidden"));
-  toggle.onclick = () => showPeople(!withHidden); bar.append(toggle);
+  toggle.onclick = () => showPeople(!withHidden);
+  const share = el("button", "pill", tr("people.share")); share.onclick = guard(sharePeople);
+  bar.append(share, toggle);
   const wrap = el("div", "people"); $("#content").append(bar, wrap);
-  const token = state.overviewToken; let page = 1, more = null;
+  // People other users shared with you (Immich keeps people per account).
+  const sharedBox = el("div", "people-shared");
+  (async () => {
+    try {
+      if (!state.userId) state.userId = (await api("/users/me")).id;
+      const r = await api(`/people?sharedWithId=${state.userId}&withHidden=${withHidden}&size=500&page=1`);
+      if (token !== state.overviewToken || !r.people.length) return;
+      const g = el("div", "people"); for (const p of r.people) g.append(personCard(p));
+      sharedBox.append(el("h3", "people-h", tr("people.sharedWithYou")), g); $("#content").append(sharedBox);
+    } catch {}
+  })();
+  let page = 1, more = null;
   const load = async () => {
     try {
       const r = await api(`/people?withHidden=${withHidden}&size=120&page=${page}`);
@@ -692,6 +705,23 @@ async function editPerson() {
   history.replaceState(null, "", `#/person/${cur.id}/${encodeURIComponent(cur.name)}`);
 }
 $("#personEdit").onclick = guard(editPerson);
+// Give other users access to all your people (Immich: PUT /people/users, type "everyone").
+async function sharePeople() {
+  const me = state.userId || (state.userId = (await api("/users/me")).id);
+  const users = (await api("/users")).filter((u) => u.id !== me);
+  if (!users.length) return toast(tr("people.shareNoUsers"), true);
+  const res = await modal(tr("people.shareTitle"), (d, done) => {
+    const checks = users.map((u) => { const c = el("input"); c.type = "checkbox"; const l = el("label", "chk"); l.append(c, el("span", null, `${u.name || u.email} (${u.email})`)); d.append(l); return [u, c]; });
+    const role = el("select", "dlg-input"); for (const [r, label] of [["read", tr("people.role.read")], ["write", tr("people.role.write")], ["admin", tr("people.role.admin")]]) { const o = el("option", null, label); o.value = r; role.append(o); }
+    const save = el("button", "pill primary", tr("people.shareGo")), cancel = el("button", "pill", tr("common.cancel"));
+    save.onclick = () => done({ ids: checks.filter(([, c]) => c.checked).map(([u]) => u.id), role: role.value }); cancel.onclick = () => done(null);
+    const row = el("div", "dlg-row"); row.append(cancel, save);
+    d.append(el("p", "dim", tr("people.shareHint")), field(tr("people.shareRole"), role), row);
+  });
+  if (!res || !res.ids.length) return;
+  await api("/people/users", { method: "PUT", body: JSON.stringify({ sharedWithIds: res.ids, role: res.role, type: "everyone" }) });
+  toast(tr("people.shared", { count: res.ids.length }));
+}
 
 // Faces of the photo in the info panel: assign to a person, use as cover, remove.
 const faceCrop = (a, f) => {
