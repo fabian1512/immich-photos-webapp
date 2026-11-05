@@ -60,19 +60,19 @@ main{position:relative;overflow-y:auto;height:100%}
 #vInfo{position:absolute;left:0;right:0;bottom:0;padding:12px 18px;color:#fff;background:linear-gradient(transparent,#000a);display:flex;justify-content:space-between;gap:12px;font-size:13px}
 #vInfo a{color:#fff}
 .tabbar,.search-btn{display:none}
-@media (max-width:720px){
+@media (max-width:720px),(pointer:coarse) and (max-height:500px){
   .app{display:block;position:fixed;inset:0;height:auto}
   aside{position:absolute;top:0;left:0;width:0;padding:0;border:0;height:0;overflow:visible;background:none}
   main{height:100%}
   aside>:not(#searchForm){display:none!important}
   #content{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
-  main{touch-action:pan-x pan-y;overflow-x:hidden}
-  .tabbar{display:flex;flex-direction:row;position:fixed;z-index:20;left:16px;right:88px;bottom:max(8px,calc(env(safe-area-inset-bottom) - 12px));height:62px;padding:5px;gap:4px;border-radius:32px;background:var(--bar-bg);backdrop-filter:blur(24px) saturate(1.6);-webkit-backdrop-filter:blur(24px) saturate(1.6);box-shadow:0 2px 20px #0003,inset 0 0 0 1px var(--line)}
+  main{touch-action:pan-x pan-y;overflow-x:hidden;padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+  .tabbar{display:flex;flex-direction:row;position:fixed;z-index:20;left:max(16px,env(safe-area-inset-left));right:calc(88px + max(0px,env(safe-area-inset-right) - 16px));max-width:420px;bottom:max(8px,calc(env(safe-area-inset-bottom) - 12px));height:62px;padding:5px;gap:4px;border-radius:32px;background:var(--bar-bg);backdrop-filter:blur(24px) saturate(1.6);-webkit-backdrop-filter:blur(24px) saturate(1.6);box-shadow:0 2px 20px #0003,inset 0 0 0 1px var(--line)}
   .tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border-radius:28px;color:var(--text);text-decoration:none;font-size:11px;font-weight:600}
   .tabbar a svg{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
   #tabbar a.active{background:var(--bg2);color:var(--accent)}
   #tabbar a.active svg{stroke:var(--accent)}
-  .search-btn{display:flex;align-items:center;justify-content:center;position:fixed;z-index:20;right:16px;bottom:max(8px,calc(env(safe-area-inset-bottom) - 12px));width:62px;height:62px;padding:0;border-radius:50%;background:var(--bar-bg);color:var(--text);backdrop-filter:blur(24px) saturate(1.6);-webkit-backdrop-filter:blur(24px) saturate(1.6);box-shadow:0 2px 20px #0003,inset 0 0 0 1px var(--line)}
+  .search-btn{display:flex;align-items:center;justify-content:center;position:fixed;z-index:20;right:max(16px,env(safe-area-inset-right));bottom:max(8px,calc(env(safe-area-inset-bottom) - 12px));width:62px;height:62px;padding:0;border-radius:50%;background:var(--bar-bg);color:var(--text);backdrop-filter:blur(24px) saturate(1.6);-webkit-backdrop-filter:blur(24px) saturate(1.6);box-shadow:0 2px 20px #0003,inset 0 0 0 1px var(--line)}
   .search-btn svg{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
   #searchForm{display:none;position:fixed;left:16px;right:16px;bottom:calc(76px + env(safe-area-inset-bottom));z-index:30;padding:8px;border-radius:18px;background:var(--bar-bg);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 4px 24px #0004}
   aside.search-open #searchForm{display:block!important}
@@ -139,7 +139,7 @@ main{position:relative;overflow-y:auto;height:100%}
 .v-panel dl{margin:14px 0 0;display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:14px}
 .v-panel dt{color:var(--dim)}.v-panel dd{margin:0;word-break:break-word}
 .v-panel a{color:var(--accent)}
-@media (max-width:720px){.tb-right .pill{padding:6px 12px}}
+@media (max-width:720px),(pointer:coarse) and (max-height:500px){.tb-right .pill{padding:6px 12px}}
 
 /* ---- Blurred placeholder (ThumbHash) ---- */
 .tile{background-size:cover;background-position:center}
@@ -208,4 +208,4 @@ main{position:relative;overflow-y:auto;height:100%}
 nav.sub{padding-left:18px}
 nav.sub.hidden{display:none}
 nav .rowlabel svg{width:20px;height:20px;flex:none;fill:none;stroke:var(--accent);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-@media (max-width:720px){.selbar{bottom:calc(78px + env(safe-area-inset-bottom))}}
+@media (max-width:720px),(pointer:coarse) and (max-height:500px){.selbar{bottom:calc(78px + env(safe-area-inset-bottom))}}
