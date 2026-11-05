@@ -181,9 +181,9 @@ class BucketFeed {
 
 // ---------- Zustand ----------
 const GAP = 10;
-const ZOOMS = [60, 90, 125, 180, 270];
+const ZOOMS = [60, 72, 86, 104, 125, 150, 180, 215, 250, 290];
 const state = {
-  mode: store.get("mode", "months"), zoom: store.get("zoom2", 2), feed: null, buckets: null, albums: null, userId: null,
+  mode: store.get("mode", "months"), zoom: store.get("zoom3", 4), feed: null, buckets: null, albums: null, userId: null,
   scroll: {}, view: "", noDate: false, overviewToken: 0, pendingYear: null,
   sel: { on: false, ids: new Set() },
 };
@@ -411,10 +411,10 @@ function maxLevel() { return state.view === "library" ? 1 + ZOOMS.length : ZOOMS
 function zoom(d) {
   const lib = state.view === "library", cur = level(), n = Math.min(maxLevel(), Math.max(0, cur + d));
   if (n === cur) return;
-  if (!lib) { state.zoom = n; store.set("zoom2", n); syncControls(); gridRelayout(); return; }
+  if (!lib) { state.zoom = n; store.set("zoom3", n); syncControls(); gridRelayout(); return; }
   const mode = n === 0 ? "years" : n === 1 ? "months" : "all", z = n >= 2 ? n - 2 : state.zoom;
   const modeChanged = mode !== state.mode;
-  state.mode = mode; state.zoom = z; store.set("mode", mode); store.set("zoom2", z);
+  state.mode = mode; state.zoom = z; store.set("mode", mode); store.set("zoom3", z);
   if (modeChanged) showLibrary(); else { syncControls(); gridRelayout(); }
 }
 $("#zOut").onclick = () => zoom(-1); $("#zIn").onclick = () => zoom(1);
@@ -816,7 +816,7 @@ $("#searchForm").addEventListener("submit", (e) => {
   m.addEventListener("touchmove", (e) => {
     if (e.touches.length !== 2 || !d0 || !$("#viewer").classList.contains("hidden")) return;
     const r = dist(e.touches) / d0;
-    if (r > 1.3) { zoom(1); d0 = dist(e.touches); } else if (r < 0.77) { zoom(-1); d0 = dist(e.touches); }
+    if (r > 1.14) { zoom(1); d0 = dist(e.touches); } else if (r < 0.88) { zoom(-1); d0 = dist(e.touches); }
   }, { passive: true });
   m.addEventListener("touchend", () => { d0 = 0; }, { passive: true });
   m.addEventListener("wheel", (e) => {

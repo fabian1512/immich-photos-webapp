@@ -61,7 +61,7 @@ main{position:relative;overflow-y:auto;height:100%}
 #vInfo a{color:#fff}
 .tabbar,.search-btn{display:none}
 @media (max-width:720px){
-  .app{grid-template-columns:1fr}
+  .app{grid-template-columns:1fr;grid-template-rows:0 minmax(0,1fr)}
   aside{position:static;padding:0;border:0;height:0;overflow:visible;background:none}
   aside>:not(#searchForm){display:none!important}
   #content{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
