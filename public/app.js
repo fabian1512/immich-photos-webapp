@@ -225,7 +225,7 @@ function gridRelayout() {
   grid.el.style.height = Layout.totalHeight(grid.rows) + "px";
   const nr = grid.rows.find((r) => anchor >= r.start && anchor < r.end);
   if (nr) main.scrollTop = grid.el.offsetTop + nr.top;
-  renderVisible(); updateDate();
+  renderVisible(); updateDate(); loadIfNearEnd();
 }
 function makeTile(a, idx) {
   const t = el("button", "tile");
@@ -287,7 +287,14 @@ function updateDate() {
     $("#tDate").textContent = a && a._date ? monthFmt.format(a._date) : "";
   });
 }
-$("#main").addEventListener("scroll", () => { renderVisible(); updateDate(); }, { passive: true });
+$("#main").addEventListener("scroll", () => { renderVisible(); updateDate(); loadIfNearEnd(); }, { passive: true });
+// Start loading well before the end of the loaded photos (about two screens). Checked on every scroll and after every
+// load, so a scroll that happens while a request is running is not lost (an IntersectionObserver would not fire again).
+function loadIfNearEnd() {
+  const f = state.feed, m = $("#main");
+  if (!f || f.loading || f.done || !grid.el) return;
+  if (m.scrollHeight - (m.scrollTop + m.clientHeight) < Math.max(1600, m.clientHeight * 2)) loadMore();
+}
 
 async function loadMore() {
   const f = state.feed;
@@ -299,11 +306,9 @@ async function loadMore() {
   else if (f.fellBack) { f.fellBack = false; toast(tr("search.fallback")); }
   gridAppend(items);
   if (!failed) { f.items.length ? clearEmpty() : ($("#empty").classList.remove("hidden"), $("#retry").classList.add("hidden")); }
-  if (!failed && items.length && !f.done) {
-    requestAnimationFrame(() => { if (f === state.feed && $("#sentinel").getBoundingClientRect().top < innerHeight + 600) loadMore(); });
-  }
+  if (!failed && items.length && !f.done) requestAnimationFrame(() => { if (f === state.feed) loadIfNearEnd(); });
 }
-new IntersectionObserver((en) => { if (en[0].isIntersecting) loadMore(); }, { rootMargin: "800px" }).observe($("#sentinel"));
+new IntersectionObserver((en) => { if (en[0].isIntersecting) loadIfNearEnd(); }, { rootMargin: "1600px" }).observe($("#sentinel"));
 let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => state.feed && grid.el && gridRelayout(), 150); });
 
 // ---------- Selection and actions ----------
