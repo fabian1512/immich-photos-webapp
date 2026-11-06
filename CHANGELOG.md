@@ -11,7 +11,7 @@
 - Viewer: swiping also works on videos (not in the control strip at the bottom); slower settle animation
 - Touch devices: swipe up on a photo opens the info as a bottom sheet (the info button is hidden), swipe down closes the sheet or the viewer; fixes the info panel being invisible on phones
 - Closing the viewer (swipe down, ✕, Esc) shrinks the photo back to its tile in the timeline
-- Touch devices: the close button of the viewer is hidden (swipe down closes)
+- Touch devices: the close button and the previous/next arrows of the viewer are hidden (swipe instead)
 - Live Photos: hold the photo in the viewer to play it (a LIVE pill also plays it once); smaller Live badge in the grid
 - Zoom steps in the grid animate (tiles glide to their new position and size instead of jumping); neighbour photos are preloaded and slide in with a gap
 - Client diagnostics: errors, stalls and gesture data are written to the container log (`POST /log`)
