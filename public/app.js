@@ -1045,7 +1045,8 @@ const curItem = () => (state.feed && vIndex >= 0 ? state.feed.items[vIndex] : nu
 function openViewer(i) { vIndex = i; $("#viewer").classList.remove("hidden"); showViewer(); }
 function closeViewer() {
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-  vIndex = -1; $("#viewer").classList.remove("immersive"); $("#viewer").classList.add("hidden"); $("#vStage").replaceChildren(); $("#vPanel").classList.add("hidden");
+  vIndex = -1; $("#viewer").classList.remove("immersive", "info-open"); $("#viewer").classList.add("hidden"); $("#vStage").replaceChildren(); $("#vPanel").classList.add("hidden");
+  for (const e of [$("#vStage"), $("#vPanel"), $("#viewer")]) e.removeAttribute("style"); // leftovers of a swipe gesture
 }
 // Maximize: real fullscreen where the browser allows it (e.g. Mac, PC, iPad), otherwise just hide all controls.
 const setImmersive = (on) => $("#viewer").classList.toggle("immersive", on);
@@ -1164,7 +1165,17 @@ async function showInfoPanel() {
   loadFaces(a, facesBox);
 }
 $("#vClose").onclick = closeViewer; $("#vPrev").onclick = () => step(-1); $("#vNext").onclick = () => step(1);
-$("#vInfoBtn").onclick = () => ($("#vPanel").classList.contains("hidden") ? showInfoPanel() : $("#vPanel").classList.add("hidden"));
+// Touch devices: the info panel is a bottom sheet (swipe up on the photo, swipe down to close), like in the iOS Photos app.
+const touchUI = () => matchMedia("(pointer: coarse)").matches;
+function closeInfoSheet() {
+  const v = $("#viewer"), panel = $("#vPanel"); v.classList.remove("info-open");
+  setTimeout(() => { if (!v.classList.contains("info-open")) { panel.classList.add("hidden"); panel.style.transition = panel.style.transform = ""; } }, 360);
+}
+$("#vInfoBtn").onclick = () => {
+  const panel = $("#vPanel"), hidden = panel.classList.contains("hidden");
+  if (touchUI()) { if (hidden) { showInfoPanel(); $("#viewer").classList.add("info-open"); } else closeInfoSheet(); }
+  else hidden ? showInfoPanel() : panel.classList.add("hidden");
+};
 $("#vFav").onclick = guard(async () => { const a = curItem(); if (!a) return; await setFavorite([a], !a.isFavorite); $("#vFav").textContent = a.isFavorite ? "♥" : "♡"; });
 $("#vDl").onclick = guard(async () => { const a = curItem(); if (a) await downloadItems([a]); });
 $("#vDel").onclick = guard(async () => {
@@ -1184,6 +1195,7 @@ stage.addEventListener("wheel", (e) => { if (e.target.tagName === "VIDEO") retur
 let tapTimer = 0;
 stage.addEventListener("dblclick", (e) => { clearTimeout(tapTimer); if (e.target.tagName === "VIDEO") return; if (vz.s > 1) resetZoom(); else zoomAt(e.clientX, e.clientY, 2.5); });
 let fromVideo = false;
+let vdrag = null; // vertical swipe: { mode: openInfo | closeInfo | closeViewer, ty, vy, ... }
 let drag = null; // swipe in progress: { d, nb, lx, lt, vx }
 let swipeStat = { moves: 0 }; // for diagnostics: how the gesture arrived
 stage.addEventListener("pointerdown", (e) => {
@@ -1191,7 +1203,7 @@ stage.addEventListener("pointerdown", (e) => {
   // Videos: swiping works on the picture itself; the bottom strip with the native controls (play, scrubbing) stays untouched.
   const onVideo = e.target.tagName === "VIDEO";
   if (onVideo && e.clientY > e.target.getBoundingClientRect().bottom - 80) return;
-  if (!ptrs.size) drag = null; // a gesture that never ended (e.g. lost events) must not block the next one
+  if (!ptrs.size) { drag = null; vdrag = null; } // a gesture that never ended (e.g. lost events) must not block the next one
   // For videos capture only once a swipe has really started, so a plain tap still reaches the video (play / pause).
   if (!onVideo) stage.setPointerCapture(e.pointerId);
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -1214,6 +1226,13 @@ stage.addEventListener("pointermove", (e) => {
   } else if (vz.s > 1) { vz.x += dx; vz.y += dy; moved = true; applyZoom(); }
   else if (!paging) { // swipe: the photo follows the finger and the neighbour slides in
     const tx = e.clientX - downX, ty = e.clientY - downY;
+    if (!drag && !vdrag && e.pointerType !== "mouse" && Math.abs(ty) > 10 && Math.abs(ty) > Math.abs(tx) * 1.3) startVDrag(e);
+    if (vdrag) {
+      moved = true; const dt = e.timeStamp - vdrag.lt;
+      if (dt > 0) { vdrag.vy = 0.4 * vdrag.vy + 0.6 * ((e.clientY - vdrag.ly) / dt); vdrag.ly = e.clientY; vdrag.lt = e.timeStamp; }
+      vdrag.ty = ty; if (!vdrag.raf) vdrag.raf = requestAnimationFrame(() => paintV(vdrag));
+      return;
+    }
     if (!drag && Math.abs(tx) > 8 && Math.abs(tx) > Math.abs(ty)) { drag = { d: 0, nb: null, lx: e.clientX, lt: e.timeStamp, vx: 0 }; if (fromVideo) { try { stage.setPointerCapture(e.pointerId); } catch {} } }
     if (!drag) return;
     moved = true; swipeStat.moves++;
@@ -1223,6 +1242,45 @@ stage.addEventListener("pointermove", (e) => {
     drag.tx = tx; if (!drag.raf) drag.raf = requestAnimationFrame(() => paintDrag(drag)); // at most one update per frame
   }
 });
+function startVDrag(e) {
+  const v = $("#viewer"), panel = $("#vPanel"), ty = e.clientY - downY;
+  const open = v.classList.contains("info-open");
+  const mode = open ? (ty > 0 ? "closeInfo" : null) : ty < 0 ? "openInfo" : "closeViewer";
+  vdrag = { mode, vy: 0, ly: e.clientY, lt: e.timeStamp, ty: 0, raf: 0 };
+  if (fromVideo) { try { stage.setPointerCapture(e.pointerId); } catch {} }
+  stage.style.transition = "none";
+  if (mode === "openInfo") { panel.style.transition = "none"; panel.style.transform = `translateY(${panel.offsetHeight || innerHeight}px)`; showInfoPanel(); }
+  if (mode === "closeInfo") panel.style.transition = "none";
+}
+function paintV(dd) {
+  dd.raf = 0; const ty = dd.ty, panel = $("#vPanel"), v = $("#viewer");
+  if (dd.mode === "openInfo") { panel.style.transform = `translateY(${Math.max(0, (panel.offsetHeight || innerHeight) + ty)}px)`; stage.style.transform = `translateY(${ty * 0.25}px)`; }
+  else if (dd.mode === "closeInfo") panel.style.transform = `translateY(${Math.max(0, ty)}px)`;
+  else if (dd.mode === "closeViewer") {
+    const y = ty > 0 ? ty : ty * 0.2;
+    stage.style.transform = `translateY(${y}px) scale(${1 - Math.max(0, ty) / 2500})`; v.style.backgroundColor = `rgba(0,0,0,${Math.max(0, 1 - Math.max(0, ty) / 450)})`;
+  }
+}
+const SETTLE = "transform .38s cubic-bezier(.22,.7,.2,1)";
+function finishV(dd) {
+  if (dd.raf) cancelAnimationFrame(dd.raf);
+  const { mode, ty, vy } = dd, v = $("#viewer"), panel = $("#vPanel");
+  Log.log("vswipe", { mode, ty: Math.round(ty), vy: +vy.toFixed(2) });
+  stage.style.transition = SETTLE; stage.style.transform = "";
+  if (mode === "openInfo") {
+    panel.style.transition = SETTLE; panel.style.transform = "";
+    if (ty < -80 || vy < -0.5) v.classList.add("info-open"); else closeInfoSheet();
+  } else if (mode === "closeInfo") {
+    panel.style.transition = SETTLE; panel.style.transform = "";
+    if (ty > 80 || vy > 0.5) closeInfoSheet();
+  } else if (mode === "closeViewer") {
+    if (ty > 110 || vy > 0.6) { // fly out and show the timeline again
+      stage.style.transform = `translateY(${innerHeight * 0.6}px) scale(.8)`; v.style.transition = "background-color .3s"; v.style.backgroundColor = "rgba(0,0,0,0)";
+      setTimeout(closeViewer, 300);
+    } else { v.style.transition = "background-color .3s"; v.style.backgroundColor = ""; }
+  }
+  setTimeout(() => { if (vIndex >= 0) { stage.style.transition = ""; panel.style.transition = ""; v.style.transition = ""; } }, 400);
+}
 function paintDrag(dd) {
   dd.raf = 0; const cur = currentEl(), tx = dd.tx;
   if (cur) { cur.style.transition = "none"; cur.style.transform = `translate3d(${dd.nb ? tx : tx * 0.3}px,0,0)`; } // resistance without neighbour
@@ -1233,7 +1291,8 @@ const endPtr = (e) => {
   const wasSingle = ptrs.size === 1; ptrs.delete(e.pointerId);
   const dx = e.clientX - downX, dy = e.clientY - downY;
   if (e.type === "pointercancel") Log.log("pointercancel", { dragging: !!drag, moves: swipeStat.moves });
-  if (drag) {
+  if (vdrag) { const dd = vdrag; vdrag = null; finishV(dd); }
+  else if (drag) {
     const dd = drag; drag = null; if (dd.raf) cancelAnimationFrame(dd.raf);
     const fast = Math.abs(dd.vx) > 0.4 && Math.sign(dd.vx) === -dd.d; // flick in the direction of the neighbour
     const commit = !!dd.nb && (Math.abs(dx) > stage.clientWidth * 0.25 || fast);

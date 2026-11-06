@@ -235,3 +235,16 @@ nav .rowlabel svg{width:20px;height:20px;flex:none;fill:none;stroke:var(--accent
 .viewer .face-acts button.danger{color:#ff453a}
 .people-bar{gap:8px}.people-h{margin:18px 24px 0;font-size:17px}
 .dlg select.dlg-input{margin:0}
+
+/* Touch devices: info as a bottom sheet instead of the side panel; opened by swiping up on the photo */
+@media (pointer:coarse){
+  #vInfoBtn{display:none}
+  #vStage{transition:transform .38s cubic-bezier(.22,.7,.2,1)}
+  .v-panel{position:fixed;left:0;right:0;top:auto;bottom:0;width:auto;height:62vh;border-radius:18px 18px 0 0;padding:22px 18px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px #0008;transform:translateY(100%);transition:transform .38s cubic-bezier(.22,.7,.2,1)}
+  .v-panel.hidden{display:block!important;visibility:hidden}
+  .viewer.info-open .v-panel{transform:none}
+  .viewer.info-open #vStage{transform:translateY(-16vh) scale(.72)}
+  .viewer:has(#vPanel:not(.hidden)) .v-tools,.viewer:has(#vPanel:not(.hidden)) #vInfo{right:0}
+  .viewer:has(#vPanel:not(.hidden)) .v-tools{right:16px}
+  .viewer.info-open #vInfo,.viewer.info-open .nav{display:none}
+}
