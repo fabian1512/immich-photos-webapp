@@ -1045,9 +1045,34 @@ const curItem = () => (state.feed && vIndex >= 0 ? state.feed.items[vIndex] : nu
 function openViewer(i) { vIndex = i; $("#viewer").classList.remove("hidden"); showViewer(); }
 function closeViewer() {
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-  vIndex = -1; $("#viewer").classList.remove("immersive", "info-open"); $("#viewer").classList.add("hidden"); $("#vStage").replaceChildren(); $("#vPanel").classList.add("hidden");
+  vIndex = -1; $("#viewer").classList.remove("immersive", "info-open", "closing"); $("#viewer").classList.add("hidden"); $("#vStage").replaceChildren(); $("#vPanel").classList.add("hidden");
   for (const e of [$("#vStage"), $("#vPanel"), $("#viewer")]) e.removeAttribute("style"); // leftovers of a swipe gesture
 }
+// Closing like the iOS Photos app: the photo shrinks and flies back to its place in the timeline.
+function tileFor(idx) {
+  if (!grid.el || !state.feed) return null;
+  const row = grid.rows.find((r) => idx >= r.start && idx < r.end); if (!row) return null;
+  const main = $("#main"), top = grid.el.offsetTop + vtop(row);
+  if (top < main.scrollTop + 60 || top + row.h > main.scrollTop + main.clientHeight - 20) { // not in view: bring it to the middle first
+    main.scrollTop = top - (main.clientHeight - row.h) / 2; renderVisible();
+  }
+  return grid.el.querySelector(`.tile[data-idx="${idx}"]`);
+}
+function closeToTile() {
+  const v = $("#viewer"), stage = $("#vStage"), el = currentEl(), tile = tileFor(vIndex);
+  if (!el || !tile || v.classList.contains("hidden")) return false;
+  const T = tile.getBoundingClientRect(); if (!T.width) return false;
+  const ow = el.offsetWidth || T.width, oh = el.offsetHeight || T.height;
+  const cx = stage.offsetLeft + stage.offsetWidth / 2, cy = stage.offsetTop + stage.offsetHeight / 2;
+  const S = Math.max(T.width / ow, T.height / oh);
+  v.classList.add("closing"); tile.style.opacity = "0"; // the flying photo takes the tile's place
+  stage.style.transition = "transform .42s cubic-bezier(.3,.7,.2,1)";
+  stage.style.transform = `translate(${T.left + T.width / 2 - cx}px,${T.top + T.height / 2 - cy}px) scale(${S})`;
+  v.style.transition = "background-color .42s"; v.style.backgroundColor = "rgba(0,0,0,0)";
+  setTimeout(() => { closeViewer(); tile.style.opacity = ""; }, 430);
+  return true;
+}
+const closeAnimated = () => { if (vIndex >= 0 && !closeToTile()) closeViewer(); };
 // Maximize: real fullscreen where the browser allows it (e.g. Mac, PC, iPad), otherwise just hide all controls.
 const setImmersive = (on) => $("#viewer").classList.toggle("immersive", on);
 function toggleFullscreen() {
@@ -1164,7 +1189,7 @@ async function showInfoPanel() {
   panel.replaceChildren(el("h4", null, info.originalFileName || a.originalFileName || ""), dl, facesBox);
   loadFaces(a, facesBox);
 }
-$("#vClose").onclick = closeViewer; $("#vPrev").onclick = () => step(-1); $("#vNext").onclick = () => step(1);
+$("#vClose").onclick = closeAnimated; $("#vPrev").onclick = () => step(-1); $("#vNext").onclick = () => step(1);
 // Touch devices: the info panel is a bottom sheet (swipe up on the photo, swipe down to close), like in the iOS Photos app.
 const touchUI = () => matchMedia("(pointer: coarse)").matches;
 function closeInfoSheet() {
@@ -1184,7 +1209,7 @@ $("#vDel").onclick = guard(async () => {
 });
 addEventListener("keydown", (e) => {
   if (vIndex < 0 || (e.target.closest && e.target.closest("input,textarea"))) return;
-  if (e.key === "Escape") { if ($("#viewer").classList.contains("immersive")) setImmersive(false); else closeViewer(); }
+  if (e.key === "Escape") { if ($("#viewer").classList.contains("immersive")) setImmersive(false); else closeAnimated(); }
   else if (e.key === "f" || e.key === "F") toggleFullscreen(); else if (e.key === "ArrowLeft") step(-1); else if (e.key === "ArrowRight") step(1);
   else if (e.key === "i") $("#vInfoBtn").click(); else if (e.key === "+" || e.key === "=") zoomAt(innerWidth / 2, innerHeight / 2, 1.4); else if (e.key === "-") zoomAt(innerWidth / 2, innerHeight / 2, 1 / 1.4);
 });
@@ -1266,7 +1291,7 @@ function finishV(dd) {
   if (dd.raf) cancelAnimationFrame(dd.raf);
   const { mode, ty, vy } = dd, v = $("#viewer"), panel = $("#vPanel");
   Log.log("vswipe", { mode, ty: Math.round(ty), vy: +vy.toFixed(2) });
-  stage.style.transition = SETTLE; stage.style.transform = "";
+  if (mode !== "closeViewer" || !(ty > 110 || vy > 0.6)) { stage.style.transition = SETTLE; stage.style.transform = ""; } // closing animates from the current position instead
   if (mode === "openInfo") {
     panel.style.transition = SETTLE; panel.style.transform = "";
     if (ty < -80 || vy < -0.5) v.classList.add("info-open"); else closeInfoSheet();
@@ -1274,12 +1299,10 @@ function finishV(dd) {
     panel.style.transition = SETTLE; panel.style.transform = "";
     if (ty > 80 || vy > 0.5) closeInfoSheet();
   } else if (mode === "closeViewer") {
-    if (ty > 110 || vy > 0.6) { // fly out and show the timeline again
-      stage.style.transform = `translateY(${innerHeight * 0.6}px) scale(.8)`; v.style.transition = "background-color .3s"; v.style.backgroundColor = "rgba(0,0,0,0)";
-      setTimeout(closeViewer, 300);
-    } else { v.style.transition = "background-color .3s"; v.style.backgroundColor = ""; }
+    if (ty > 110 || vy > 0.6) closeAnimated(); // shrink back to the tile in the timeline
+    else { v.style.transition = "background-color .3s"; v.style.backgroundColor = ""; }
   }
-  setTimeout(() => { if (vIndex >= 0) { stage.style.transition = ""; panel.style.transition = ""; v.style.transition = ""; } }, 400);
+  setTimeout(() => { if (vIndex >= 0 && !v.classList.contains("closing")) { stage.style.transition = ""; panel.style.transition = ""; v.style.transition = ""; } }, 400);
 }
 function paintDrag(dd) {
   dd.raf = 0; const cur = currentEl(), tx = dd.tx;

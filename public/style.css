@@ -248,3 +248,4 @@ nav .rowlabel svg{width:20px;height:20px;flex:none;fill:none;stroke:var(--accent
   .viewer:has(#vPanel:not(.hidden)) .v-tools{right:16px}
   .viewer.info-open #vInfo,.viewer.info-open .nav{display:none}
 }
+.viewer.closing .v-tools,.viewer.closing #vClose,.viewer.closing #vInfo,.viewer.closing .nav,.viewer.closing .v-panel{opacity:0;transition:opacity .18s}
