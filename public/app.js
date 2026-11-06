@@ -1118,7 +1118,7 @@ const makeNeighbour = (d) => $("#vStage").querySelector(`.nb[data-d="${d}"]`);
 addEventListener("resize", () => { if (vIndex >= 0) for (const n of $("#vStage").querySelectorAll(".nb")) n.style.transform = restX(+n.dataset.d); });
 const currentEl = () => $("#vStage").querySelector(":scope > :not(.nb)");
 const SLIDE_GAP = 24; // black gap between two photos while sliding
-const SLIDE = "transform .26s cubic-bezier(.2,.8,.2,1)";
+const SLIDE = "transform .42s cubic-bezier(.22,.7,.2,1)"; // settle after letting go
 // Finishes the slide: commit = switch to the neighbour, otherwise spring back.
 function finishPage(d, nb, commit) {
   const cur = currentEl(); paging = true;
@@ -1131,7 +1131,7 @@ function finishPage(d, nb, commit) {
       vIndex = idxFor(d);
       showViewer(curItem().type === "VIDEO" ? null : nb, cur && cur.tagName === "IMG" ? { el: cur, d: -d } : null);
     } else if (cur) { cur.style.transition = ""; cur.style.transform = ""; }
-  }, 270);
+  }, 430);
 }
 // d is the visual direction (1 = right); used by keys and buttons.
 const step = (d) => {
@@ -1183,13 +1183,19 @@ let pinch0 = 0, pinchS = 1, downX = 0, downY = 0, moved = false;
 stage.addEventListener("wheel", (e) => { if (e.target.tagName === "VIDEO") return; e.preventDefault(); zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0018))); }, { passive: false });
 let tapTimer = 0;
 stage.addEventListener("dblclick", (e) => { clearTimeout(tapTimer); if (e.target.tagName === "VIDEO") return; if (vz.s > 1) resetZoom(); else zoomAt(e.clientX, e.clientY, 2.5); });
+let fromVideo = false;
 let drag = null; // swipe in progress: { d, nb, lx, lt, vx }
 let swipeStat = { moves: 0 }; // for diagnostics: how the gesture arrived
 stage.addEventListener("pointerdown", (e) => {
-  if (e.target.tagName === "VIDEO" || paging) return;
+  if (paging) return;
+  // Videos: swiping works on the picture itself; the bottom strip with the native controls (play, scrubbing) stays untouched.
+  const onVideo = e.target.tagName === "VIDEO";
+  if (onVideo && e.clientY > e.target.getBoundingClientRect().bottom - 80) return;
   if (!ptrs.size) drag = null; // a gesture that never ended (e.g. lost events) must not block the next one
-  stage.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (ptrs.size === 1) { downX = e.clientX; downY = e.clientY; moved = false; }
+  // For videos capture only once a swipe has really started, so a plain tap still reaches the video (play / pause).
+  if (!onVideo) stage.setPointerCapture(e.pointerId);
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (ptrs.size === 1) { downX = e.clientX; downY = e.clientY; moved = false; fromVideo = onVideo; }
   if (ptrs.size === 2) {
     const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); pinchS = vz.s;
     if (drag) { // second finger: pinch instead of swipe
@@ -1208,7 +1214,7 @@ stage.addEventListener("pointermove", (e) => {
   } else if (vz.s > 1) { vz.x += dx; vz.y += dy; moved = true; applyZoom(); }
   else if (!paging) { // swipe: the photo follows the finger and the neighbour slides in
     const tx = e.clientX - downX, ty = e.clientY - downY;
-    if (!drag && Math.abs(tx) > 8 && Math.abs(tx) > Math.abs(ty)) drag = { d: 0, nb: null, lx: e.clientX, lt: e.timeStamp, vx: 0 };
+    if (!drag && Math.abs(tx) > 8 && Math.abs(tx) > Math.abs(ty)) { drag = { d: 0, nb: null, lx: e.clientX, lt: e.timeStamp, vx: 0 }; if (fromVideo) { try { stage.setPointerCapture(e.pointerId); } catch {} } }
     if (!drag) return;
     moved = true; swipeStat.moves++;
     const d = tx < 0 ? 1 : -1, cur = currentEl();
@@ -1235,7 +1241,7 @@ const endPtr = (e) => {
     swipeStat = { moves: 0 };
     finishPage(dd.d, dd.nb, commit);
   } else if (wasSingle && vz.s === 1 && Math.abs(dx) > 40) Log.log("swipe-nodrag", { dx: Math.round(dx), dy: Math.round(dy), moves: swipeStat.moves, how: e.type });
-  else if (wasSingle && Math.hypot(dx, dy) < 6 && !moved) { // einfacher Klick/Tipp: Bedienelemente aus- bzw. einblenden
+  else if (wasSingle && !fromVideo && Math.hypot(dx, dy) < 6 && !moved) { // einfacher Klick/Tipp: Bedienelemente aus- bzw. einblenden
     clearTimeout(tapTimer); tapTimer = setTimeout(() => setImmersive(!$("#viewer").classList.contains("immersive")), 260);
   }
   pinch0 = 0;
