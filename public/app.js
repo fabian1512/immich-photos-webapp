@@ -1045,9 +1045,26 @@ const curItem = () => (state.feed && vIndex >= 0 ? state.feed.items[vIndex] : nu
 function openViewer(i) { vIndex = i; $("#viewer").classList.remove("hidden"); showViewer(); }
 function closeViewer() {
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-  vIndex = -1; $("#viewer").classList.remove("immersive", "info-open", "closing"); $("#viewer").classList.add("hidden"); $("#vStage").replaceChildren(); $("#vPanel").classList.add("hidden");
+  liveStop(); $("#vLiveVideo").removeAttribute("src"); vIndex = -1; $("#viewer").classList.remove("immersive", "info-open", "closing"); $("#viewer").classList.add("hidden"); $("#vStage").replaceChildren(); $("#vPanel").classList.add("hidden");
   for (const e of [$("#vStage"), $("#vPanel"), $("#viewer")]) e.removeAttribute("style"); // leftovers of a swipe gesture
 }
+// Live Photos: hold the photo (finger or mouse) to play the short video, release to stop.
+let liveTimer = 0, livePlaying = false;
+function liveStop() {
+  clearTimeout(liveTimer); liveTimer = 0;
+  const vid = $("#vLiveVideo"); vid.classList.remove("on"); vid.pause(); livePlaying = false;
+}
+function livePlay(untilEnd) {
+  const a = curItem(), vid = $("#vLiveVideo");
+  if (!a || !a.livePhotoVideoId || vz.s !== 1 || $("#viewer").classList.contains("info-open")) return;
+  const src = `/api/assets/${a.livePhotoVideoId}/video/playback`;
+  if (!vid.src.endsWith(src)) vid.src = src;
+  vid.currentTime = 0; vid.muted = false; livePlaying = true; moved = true; // a hold is not a tap
+  vid.onended = untilEnd ? liveStop : null;
+  const go = () => vid.play().then(() => { if (livePlaying) vid.classList.add("on"); });
+  go().catch(() => { vid.muted = true; go().catch(() => {}); }); // sound needs a user gesture; fall back to muted
+}
+$("#vLive").onclick = () => (livePlaying ? liveStop() : livePlay(true));
 // Closing like the iOS Photos app: the photo shrinks and flies back to its place in the timeline.
 function tileFor(idx) {
   if (!grid.el || !state.feed) return null;
@@ -1100,7 +1117,8 @@ function zoomAt(cx, cy, factor) {
 }
 function showViewer(reuse, keep) {
   const a = curItem(); if (!a) return closeViewer();
-  const stage = $("#vStage"); stage.replaceChildren(); resetZoom();
+  const stage = $("#vStage"); stage.replaceChildren(); resetZoom(); liveStop();
+  $("#vLive").classList.toggle("hidden", !(a.livePhotoVideoId && a.type !== "VIDEO"));
   if (a.type === "VIDEO") {
     const v = el("video"); v.controls = true; v.autoplay = true; v.playsInline = true;
     v.poster = img(a.id, "preview"); v.src = `/api/assets/${a.id}/video/playback`; stage.append(v);
@@ -1231,9 +1249,11 @@ stage.addEventListener("pointerdown", (e) => {
   if (!ptrs.size) { drag = null; vdrag = null; } // a gesture that never ended (e.g. lost events) must not block the next one
   // For videos capture only once a swipe has really started, so a plain tap still reaches the video (play / pause).
   if (!onVideo) stage.setPointerCapture(e.pointerId);
+  if (!ptrs.size && !onVideo) { clearTimeout(liveTimer); liveTimer = setTimeout(() => livePlay(false), 380); } // hold = play the Live Photo
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (ptrs.size === 1) { downX = e.clientX; downY = e.clientY; moved = false; fromVideo = onVideo; }
   if (ptrs.size === 2) {
+    liveStop();
     const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); pinchS = vz.s;
     if (drag) { // second finger: pinch instead of swipe
       if (drag.raf) cancelAnimationFrame(drag.raf);
@@ -1251,6 +1271,8 @@ stage.addEventListener("pointermove", (e) => {
   } else if (vz.s > 1) { vz.x += dx; vz.y += dy; moved = true; applyZoom(); }
   else if (!paging) { // swipe: the photo follows the finger and the neighbour slides in
     const tx = e.clientX - downX, ty = e.clientY - downY;
+    if (Math.hypot(tx, ty) > 10 && liveTimer) { clearTimeout(liveTimer); liveTimer = 0; } // moved: swipe, not a hold
+    if (Math.hypot(tx, ty) > 24 && livePlaying) liveStop();
     if (!drag && !vdrag && e.pointerType !== "mouse" && Math.abs(ty) > 10 && Math.abs(ty) > Math.abs(tx) * 1.3) startVDrag(e);
     if (vdrag) {
       moved = true; const dt = e.timeStamp - vdrag.lt;
@@ -1312,6 +1334,7 @@ function paintDrag(dd) {
 const endPtr = (e) => {
   if (!ptrs.has(e.pointerId)) return;
   const wasSingle = ptrs.size === 1; ptrs.delete(e.pointerId);
+  liveStop();
   const dx = e.clientX - downX, dy = e.clientY - downY;
   if (e.type === "pointercancel") Log.log("pointercancel", { dragging: !!drag, moves: swipeStat.moves });
   if (vdrag) { const dd = vdrag; vdrag = null; finishV(dd); }
