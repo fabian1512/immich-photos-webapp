@@ -185,18 +185,23 @@ const ZOOMS = [60, 72, 86, 104, 125, 150, 180, 215, 250, 290];
 const state = {
   mode: store.get("mode", "months"), zoom: store.get("zoom3", 4), feed: null, buckets: null, albums: null, userId: null,
   scroll: {}, view: "", noDate: false, overviewToken: 0, pendingYear: null,
-  sel: { on: false, ids: new Set() },
+  rev: false, sel: { on: false, ids: new Set() },
 };
 const targetH = () => ZOOMS[state.zoom];
 
 // ---------- Virtualisiertes Raster ----------
-const grid = { el: null, rows: [], ratios: [], W: 0, rendered: new Map() };
+// Rows are always laid out newest-first (index 0 = newest, as the API delivers). With state.rev (date-ordered views) they are
+// drawn mirrored: the newest row at the bottom, older photos above, left = older within a row, like the iOS Photos app.
+const grid = { el: null, rows: [], ratios: [], W: 0, H: 0, rendered: new Map() };
+const vtop = (r) => (state.rev ? grid.H - r.top - r.h : r.top);
+// Maps a y position in the scroll content (relative to the grid) to the layout coordinate of the rows.
+const ly = (y) => (state.rev ? grid.H - y : y);
 const gridWidth = () => Math.max(100, $("#content").clientWidth - GAP * 2);
 
 function gridInit() {
   $("#content").replaceChildren();
   grid.el = el("div", "vgrid"); $("#content").append(grid.el);
-  Object.assign(grid, { rows: [], ratios: [], W: gridWidth() });
+  Object.assign(grid, { rows: [], ratios: [], W: gridWidth(), H: 0 });
   grid.rendered.clear();
   document.documentElement.style.setProperty("--gap", GAP + "px");
   grid.el.style.height = "0px";
@@ -208,23 +213,30 @@ function gridAppend(items) {
   if (!grid.el || !items.length) return;
   for (const a of items) grid.ratios.push(a._ratio);
   const from = grid.rows.length && !grid.rows.at(-1).full ? grid.rows.length - 1 : grid.rows.length;
+  const main = $("#main"), prevH = grid.H, first = !grid.rows.length;
   Layout.layoutRows(grid.ratios, grid.W, targetH(), GAP, grid.rows);
-  gridInvalidateFrom(from);
-  grid.el.style.height = Layout.totalHeight(grid.rows) + "px";
+  grid.H = Layout.totalHeight(grid.rows);
+  gridInvalidateFrom(state.rev ? 0 : from); // mirrored: every row moves when the height changes
+  grid.el.style.height = grid.H + "px";
+  // Mirrored: older photos are added above. Open at the end (newest), afterwards keep the view where it was.
+  if (state.rev) main.scrollTop = first ? main.scrollHeight : main.scrollTop + (grid.H - prevH);
   renderVisible(); updateDate();
 }
 // Recompute everything (zoom, window size, deleted photos) and keep the current position in view.
 function gridRelayout() {
   if (!grid.el || !state.feed) return;
   const main = $("#main"), viewTop = main.scrollTop - grid.el.offsetTop;
-  const ar = Layout.rowAt(grid.rows, viewTop), anchor = ar >= 0 ? grid.rows[ar].start : 0;
+  const ar = Layout.rowAt(grid.rows, ly(viewTop)), anchor = ar >= 0 ? grid.rows[ar].start : 0;
+  const atEnd = state.rev && main.scrollHeight - main.scrollTop - main.clientHeight < 4;
   gridInvalidateFrom(0);
   grid.W = gridWidth();
   grid.ratios = state.feed.items.map((a) => a._ratio);
   grid.rows = Layout.layoutRows(grid.ratios, grid.W, targetH(), GAP, []);
-  grid.el.style.height = Layout.totalHeight(grid.rows) + "px";
+  grid.H = Layout.totalHeight(grid.rows);
+  grid.el.style.height = grid.H + "px";
   const nr = grid.rows.find((r) => anchor >= r.start && anchor < r.end);
-  if (nr) main.scrollTop = grid.el.offsetTop + nr.top;
+  if (atEnd) main.scrollTop = main.scrollHeight;
+  else if (nr) main.scrollTop = grid.el.offsetTop + vtop(nr);
   renderVisible(); updateDate(); loadIfNearEnd();
 }
 function makeTile(a, idx) {
@@ -247,8 +259,9 @@ function makeTile(a, idx) {
 function makeRowEl(r) {
   const items = state.feed.items, W = grid.W, T = targetH();
   const row = el("div", "row");
-  row.style.top = r.top + "px"; row.style.height = r.h + "px"; row.style.width = W + "px";
-  for (let i = r.start; i < r.end; i++) {
+  row.style.top = vtop(r) + "px"; row.style.height = r.h + "px"; row.style.width = W + "px";
+  for (let k = r.start; k < r.end; k++) {
+    const i = state.rev ? r.end - 1 - (k - r.start) : k; // mirrored: oldest on the left
     const t = makeTile(items[i], i);
     t.style.flex = r.full ? `${items[i]._ratio} 1 0` : `0 0 ${items[i]._ratio * T}px`;
     row.append(t);
@@ -259,10 +272,11 @@ function renderVisible() {
   if (!grid.el || !state.feed) return;
   const main = $("#main"), viewTop = main.scrollTop - grid.el.offsetTop;
   const lo = viewTop - 800, hi = viewTop + main.clientHeight + 800;
-  const first = Layout.rowAt(grid.rows, lo);
+  const [yLo, yHi] = state.rev ? [ly(hi), ly(lo)] : [lo, hi];
+  const first = Layout.rowAt(grid.rows, yLo);
   if (first < 0) return;
   let i = first;
-  for (; i < grid.rows.length && grid.rows[i].top <= hi; i++) {
+  for (; i < grid.rows.length && grid.rows[i].top <= yHi; i++) {
     if (!grid.rendered.has(i)) { const n = makeRowEl(grid.rows[i]); grid.el.append(n); grid.rendered.set(i, n); }
   }
   const last = i - 1;
@@ -281,7 +295,7 @@ function updateDate() {
   dateRaf = requestAnimationFrame(() => {
     dateRaf = 0;
     if (state.noDate || !state.feed || !grid.rows.length || state.view === "overview") return;
-    const y = $("#main").scrollTop - grid.el.offsetTop + 70;
+    const y = ly($("#main").scrollTop - grid.el.offsetTop + 70);
     const r = grid.rows[Math.max(0, Layout.rowAt(grid.rows, y))];
     const a = r && state.feed.items[r.start];
     $("#tDate").textContent = a && a._date ? monthFmt.format(a._date) : "";
@@ -293,7 +307,9 @@ $("#main").addEventListener("scroll", () => { renderVisible(); updateDate(); loa
 function loadIfNearEnd() {
   const f = state.feed, m = $("#main");
   if (!f || f.loading || f.done || !grid.el) return;
-  if (m.scrollHeight - (m.scrollTop + m.clientHeight) < Math.max(1600, m.clientHeight * 2)) loadMore();
+  const lead = Math.max(1600, m.clientHeight * 2);
+  // Mirrored: older photos lie above, so the load-more edge is the top.
+  if ((state.rev ? m.scrollTop - grid.el.offsetTop : m.scrollHeight - (m.scrollTop + m.clientHeight)) < lead) loadMore();
 }
 
 async function loadMore() {
@@ -407,6 +423,7 @@ function showFeed(filters, title, { back = false, seg = false, feedOpts, noDate 
   setHeader(title, { back, seg, zoom: true, select: true });
   syncControls(); gridInit();
   state.noDate = noDate;
+  state.rev = !noDate; // search results stay in relevance order, top to bottom
   state.feed = makeFeed ? makeFeed() : new Feed(filters, feedOpts);
   loadMore();
 }
@@ -1042,7 +1059,8 @@ function showViewer() {
   if (!$("#vPanel").classList.contains("hidden")) showInfoPanel();
   if (vIndex > state.feed.items.length - 20) loadMore();
 }
-const step = (d) => { if (vIndex < 0) return; const n = vIndex + d; if (n >= 0 && n < state.feed.items.length) { vIndex = n; showViewer(); } };
+// d is the visual direction (1 = right). In the mirrored grid the right neighbour is the newer photo.
+const step = (d) => { if (vIndex < 0) return; const n = vIndex + (state.rev ? -d : d); if (n >= 0 && n < state.feed.items.length) { vIndex = n; showViewer(); } };
 async function showInfoPanel() {
   const a = curItem(), panel = $("#vPanel"); if (!a) return;
   panel.classList.remove("hidden"); panel.replaceChildren(el("p", null, tr("common.loading")));

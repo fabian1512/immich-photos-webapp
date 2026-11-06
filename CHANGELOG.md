@@ -5,6 +5,8 @@
 - Grouped sidebar and floating mobile tab bar, pinch / zoom steps through years, months and all photos
 - People editing: name, birthday, favorite, hidden, merge, delete; faces in the viewer info panel (assign, use as cover, remove)
 - People keep Immich's order; compose file for running on a different machine than Immich
+- Photo grids show the newest photos at the bottom and open at the end (like the iOS Photos app); search results keep their order
+- Photos load earlier and on every scroll, shared people show their photos for partner libraries
 
 ## 0.1.1
 
