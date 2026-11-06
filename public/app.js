@@ -1072,7 +1072,7 @@ function zoomAt(cx, cy, factor) {
   if (ns === 1) { vz.x = vz.y = 0; } else { vz.x = ox - ((ox - vz.x) * ns) / vz.s; vz.y = oy - ((oy - vz.y) * ns) / vz.s; }
   vz.s = ns; applyZoom();
 }
-function showViewer(reuse) {
+function showViewer(reuse, keep) {
   const a = curItem(); if (!a) return closeViewer();
   const stage = $("#vStage"); stage.replaceChildren(); resetZoom();
   if (a.type === "VIDEO") {
@@ -1080,7 +1080,7 @@ function showViewer(reuse) {
     v.poster = img(a.id, "preview"); v.src = `/api/assets/${a.id}/video/playback`; stage.append(v);
   } else {
     // reuse: the neighbour image that was just slid into place (no reload, no flicker)
-    const i = reuse || el("img"); i.alt = ""; i.draggable = false; i.classList.remove("nb"); i.style.transition = i.style.transform = "";
+    const i = reuse || el("img"); i.alt = ""; i.draggable = false; i.classList.remove("nb"); delete i.dataset.d; i.style.transition = i.style.transform = "";
     if (!reuse) i.src = img(a.id, "preview");
     i.onerror = () => { stage.replaceChildren(el("p", null, tr("viewer.noPreview"))); stage.firstChild.style.color = "#fff"; };
     stage.append(i);
@@ -1094,43 +1094,49 @@ function showViewer(reuse) {
   }
   if (!$("#vPanel").classList.contains("hidden")) showInfoPanel();
   if (vIndex > state.feed.items.length - 20) loadMore();
-  preloadNeighbours();
-}
-// Load the previews of both neighbours ahead, so they are already there when sliding in.
-const preloaded = [];
-function preloadNeighbours() {
-  preloaded.length = 0;
-  for (const d of [1, -1]) { const n = idxFor(d); if (n >= 0 && state.feed.items[n].type !== "VIDEO") { const i = new Image(); i.src = img(state.feed.items[n].id, "preview"); preloaded.push(i); } }
+  ensureNeighbours(keep);
 }
 // d is the visual direction (1 = right). In the mirrored grid the right neighbour is the newer photo.
 const idxFor = (d) => { const n = vIndex + (state.rev ? -d : d); return n >= 0 && n < state.feed.items.length ? n : -1; };
 let paging = false; // a slide animation is running
-// Neighbour image for sliding in next to the current one (same grid cell, moved sideways by transform).
-function makeNeighbour(d) {
-  const n = idxFor(d); if (n < 0) return null;
-  const i = el("img", "nb"); i.alt = ""; i.draggable = false; i.src = img(state.feed.items[n].id, "preview");
-  $("#vStage").append(i); return i;
+// Both neighbours stay in the viewer permanently, decoded and parked beside the current photo (like PhotoSwipe / Swiper):
+// swiping then only changes transforms and never has to load or decode an image in the middle of the gesture.
+const slideW = () => $("#vStage").clientWidth + SLIDE_GAP;
+const restX = (d) => `translate3d(${d * slideW()}px,0,0)`;
+function ensureNeighbours(keep) {
+  const stage = $("#vStage");
+  for (const n of stage.querySelectorAll(".nb")) if (!keep || n !== keep.el) n.remove();
+  for (const d of [-1, 1]) {
+    const n = idxFor(d); if (n < 0) continue;
+    let i = keep && keep.d === d ? keep.el : null; // the photo we just left is already loaded: keep it
+    if (!i) { i = el("img", "nb"); i.alt = ""; i.draggable = false; i.src = img(state.feed.items[n].id, "preview"); if (i.decode) i.decode().catch(() => {}); }
+    i.classList.add("nb"); i.dataset.d = d; i.style.transition = "none"; i.style.transform = restX(d);
+    stage.append(i);
+  }
 }
+const makeNeighbour = (d) => $("#vStage").querySelector(`.nb[data-d="${d}"]`);
+addEventListener("resize", () => { if (vIndex >= 0) for (const n of $("#vStage").querySelectorAll(".nb")) n.style.transform = restX(+n.dataset.d); });
 const currentEl = () => $("#vStage").querySelector(":scope > :not(.nb)");
 const SLIDE_GAP = 24; // black gap between two photos while sliding
 const SLIDE = "transform .26s cubic-bezier(.2,.8,.2,1)";
 // Finishes the slide: commit = switch to the neighbour, otherwise spring back.
 function finishPage(d, nb, commit) {
-  const cur = currentEl(), w = $("#vStage").clientWidth; paging = true;
+  const cur = currentEl(); paging = true;
   for (const e of [cur, nb]) if (e) e.style.transition = SLIDE;
-  if (cur) cur.style.transform = `translateX(${commit ? -d * (w + SLIDE_GAP) : 0}px)`;
-  if (nb) nb.style.transform = `translateX(${commit ? 0 : d * (w + SLIDE_GAP)}px)`;
+  if (cur) cur.style.transform = commit ? `translate3d(${-d * slideW()}px,0,0)` : "translate3d(0,0,0)";
+  if (nb) nb.style.transform = commit ? "translate3d(0,0,0)" : restX(d);
   setTimeout(() => {
     paging = false;
-    if (commit && nb) { vIndex = idxFor(d); showViewer(curItem().type === "VIDEO" ? null : nb); } else if (nb) nb.remove();
-    if (!commit && cur) cur.style.transition = "";
+    if (commit && nb) {
+      vIndex = idxFor(d);
+      showViewer(curItem().type === "VIDEO" ? null : nb, cur && cur.tagName === "IMG" ? { el: cur, d: -d } : null);
+    } else if (cur) { cur.style.transition = ""; cur.style.transform = ""; }
   }, 270);
 }
 // d is the visual direction (1 = right); used by keys and buttons.
 const step = (d) => {
   if (vIndex < 0 || paging) return;
   const nb = makeNeighbour(d); if (!nb) return;
-  nb.style.transform = `translateX(${d * ($("#vStage").clientWidth + SLIDE_GAP)}px)`; nb.offsetWidth; // start position, then animate
   finishPage(d, nb, true);
 };
 async function showInfoPanel() {
@@ -1181,11 +1187,16 @@ let drag = null; // swipe in progress: { d, nb, lx, lt, vx }
 let swipeStat = { moves: 0 }; // for diagnostics: how the gesture arrived
 stage.addEventListener("pointerdown", (e) => {
   if (e.target.tagName === "VIDEO" || paging) return;
+  if (!ptrs.size) drag = null; // a gesture that never ended (e.g. lost events) must not block the next one
   stage.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (ptrs.size === 1) { downX = e.clientX; downY = e.clientY; moved = false; }
   if (ptrs.size === 2) {
     const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); pinchS = vz.s;
-    if (drag) { drag.nb && drag.nb.remove(); drag = null; const c = currentEl(); if (c) c.style.transform = ""; } // second finger: pinch instead of swipe
+    if (drag) { // second finger: pinch instead of swipe
+      if (drag.raf) cancelAnimationFrame(drag.raf);
+      if (drag.nb) drag.nb.style.transform = restX(drag.d);
+      const c = currentEl(); if (c) c.style.transform = ""; drag = null;
+    }
   }
 });
 stage.addEventListener("pointermove", (e) => {
@@ -1200,26 +1211,30 @@ stage.addEventListener("pointermove", (e) => {
     if (!drag && Math.abs(tx) > 8 && Math.abs(tx) > Math.abs(ty)) drag = { d: 0, nb: null, lx: e.clientX, lt: e.timeStamp, vx: 0 };
     if (!drag) return;
     moved = true; swipeStat.moves++;
-    const d = tx < 0 ? 1 : -1, w = stage.clientWidth, cur = currentEl();
-    if (d !== drag.d) { if (drag.nb) drag.nb.remove(); drag.d = d; drag.nb = makeNeighbour(d); }
+    const d = tx < 0 ? 1 : -1, cur = currentEl();
+    if (d !== drag.d) { if (drag.nb) drag.nb.style.transform = restX(drag.d); drag.d = d; drag.nb = makeNeighbour(d); }
     const dt = e.timeStamp - drag.lt; if (dt > 0) { drag.vx = 0.4 * drag.vx + 0.6 * ((e.clientX - drag.lx) / dt); drag.lx = e.clientX; drag.lt = e.timeStamp; }
-    if (cur) { cur.style.transition = "none"; cur.style.transform = `translateX(${drag.nb ? tx : tx * 0.3}px)`; } // resistance without neighbour
-    if (drag.nb) { drag.nb.style.transition = "none"; drag.nb.style.transform = `translateX(${d * (w + SLIDE_GAP) + tx}px)`; }
+    drag.tx = tx; if (!drag.raf) drag.raf = requestAnimationFrame(() => paintDrag(drag)); // at most one update per frame
   }
 });
+function paintDrag(dd) {
+  dd.raf = 0; const cur = currentEl(), tx = dd.tx;
+  if (cur) { cur.style.transition = "none"; cur.style.transform = `translate3d(${dd.nb ? tx : tx * 0.3}px,0,0)`; } // resistance without neighbour
+  if (dd.nb) { dd.nb.style.transition = "none"; dd.nb.style.transform = `translate3d(${dd.d * slideW() + tx}px,0,0)`; }
+}
 const endPtr = (e) => {
   if (!ptrs.has(e.pointerId)) return;
   const wasSingle = ptrs.size === 1; ptrs.delete(e.pointerId);
   const dx = e.clientX - downX, dy = e.clientY - downY;
   if (e.type === "pointercancel") Log.log("pointercancel", { dragging: !!drag, moves: swipeStat.moves });
   if (drag) {
-    const dd = drag; drag = null;
+    const dd = drag; drag = null; if (dd.raf) cancelAnimationFrame(dd.raf);
     const fast = Math.abs(dd.vx) > 0.4 && Math.sign(dd.vx) === -dd.d; // flick in the direction of the neighbour
     const commit = !!dd.nb && (Math.abs(dx) > stage.clientWidth * 0.25 || fast);
-    Log.log("swipe", { moves: swipeStat.moves, dx: Math.round(dx), vx: +dd.vx.toFixed(2), commit, neighbour: !!dd.nb, type: e.type });
+    Log.log("swipe", { moves: swipeStat.moves, dx: Math.round(dx), vx: +dd.vx.toFixed(2), commit, neighbour: !!dd.nb, how: e.type });
     swipeStat = { moves: 0 };
     finishPage(dd.d, dd.nb, commit);
-  } else if (wasSingle && vz.s === 1 && Math.abs(dx) > 40) Log.log("swipe-nodrag", { dx: Math.round(dx), dy: Math.round(dy), moves: swipeStat.moves, type: e.type });
+  } else if (wasSingle && vz.s === 1 && Math.abs(dx) > 40) Log.log("swipe-nodrag", { dx: Math.round(dx), dy: Math.round(dy), moves: swipeStat.moves, how: e.type });
   else if (wasSingle && Math.hypot(dx, dy) < 6 && !moved) { // einfacher Klick/Tipp: Bedienelemente aus- bzw. einblenden
     clearTimeout(tapTimer); tapTimer = setTimeout(() => setImmersive(!$("#viewer").classList.contains("immersive")), 260);
   }
