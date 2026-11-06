@@ -130,7 +130,9 @@ main{position:relative;overflow-y:auto;height:100%}
 .viewer{touch-action:none;user-select:none}
 #vStage{overflow:hidden;cursor:grab}
 #vStage.zoomed{cursor:grabbing}
+#vStage>*{grid-area:1/1}
 #vStage img{transition:none;will-change:transform;touch-action:none}
+#vStage img.nb{pointer-events:none}
 .v-tools{position:absolute;top:16px;right:16px;display:flex;gap:8px;z-index:3}
 .v-tools button{position:static;width:42px;height:42px}
 #vInfo{pointer-events:none}#vInfo a{pointer-events:auto}

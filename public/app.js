@@ -1038,14 +1038,16 @@ function zoomAt(cx, cy, factor) {
   if (ns === 1) { vz.x = vz.y = 0; } else { vz.x = ox - ((ox - vz.x) * ns) / vz.s; vz.y = oy - ((oy - vz.y) * ns) / vz.s; }
   vz.s = ns; applyZoom();
 }
-function showViewer() {
+function showViewer(reuse) {
   const a = curItem(); if (!a) return closeViewer();
   const stage = $("#vStage"); stage.replaceChildren(); resetZoom();
   if (a.type === "VIDEO") {
     const v = el("video"); v.controls = true; v.autoplay = true; v.playsInline = true;
     v.poster = img(a.id, "preview"); v.src = `/api/assets/${a.id}/video/playback`; stage.append(v);
   } else {
-    const i = el("img"); i.alt = ""; i.draggable = false; i.src = img(a.id, "preview");
+    // reuse: the neighbour image that was just slid into place (no reload, no flicker)
+    const i = reuse || el("img"); i.alt = ""; i.draggable = false; i.classList.remove("nb"); i.style.transition = i.style.transform = "";
+    if (!reuse) i.src = img(a.id, "preview");
     i.onerror = () => { stage.replaceChildren(el("p", null, tr("viewer.noPreview"))); stage.firstChild.style.color = "#fff"; };
     stage.append(i);
   }
@@ -1060,7 +1062,35 @@ function showViewer() {
   if (vIndex > state.feed.items.length - 20) loadMore();
 }
 // d is the visual direction (1 = right). In the mirrored grid the right neighbour is the newer photo.
-const step = (d) => { if (vIndex < 0) return; const n = vIndex + (state.rev ? -d : d); if (n >= 0 && n < state.feed.items.length) { vIndex = n; showViewer(); } };
+const idxFor = (d) => { const n = vIndex + (state.rev ? -d : d); return n >= 0 && n < state.feed.items.length ? n : -1; };
+let paging = false; // a slide animation is running
+// Neighbour image for sliding in next to the current one (same grid cell, moved sideways by transform).
+function makeNeighbour(d) {
+  const n = idxFor(d); if (n < 0) return null;
+  const i = el("img", "nb"); i.alt = ""; i.draggable = false; i.src = img(state.feed.items[n].id, "preview");
+  $("#vStage").append(i); return i;
+}
+const currentEl = () => $("#vStage").querySelector(":scope > :not(.nb)");
+const SLIDE = "transform .26s cubic-bezier(.2,.8,.2,1)";
+// Finishes the slide: commit = switch to the neighbour, otherwise spring back.
+function finishPage(d, nb, commit) {
+  const cur = currentEl(), w = $("#vStage").clientWidth; paging = true;
+  for (const e of [cur, nb]) if (e) e.style.transition = SLIDE;
+  if (cur) cur.style.transform = `translateX(${commit ? -d * w : 0}px)`;
+  if (nb) nb.style.transform = `translateX(${commit ? 0 : d * w}px)`;
+  setTimeout(() => {
+    paging = false;
+    if (commit && nb) { vIndex = idxFor(d); showViewer(curItem().type === "VIDEO" ? null : nb); } else if (nb) nb.remove();
+    if (!commit && cur) cur.style.transition = "";
+  }, 270);
+}
+// d is the visual direction (1 = right); used by keys and buttons.
+const step = (d) => {
+  if (vIndex < 0 || paging) return;
+  const nb = makeNeighbour(d); if (!nb) return;
+  nb.style.transform = `translateX(${d * $("#vStage").clientWidth}px)`; nb.offsetWidth; // start position, then animate
+  finishPage(d, nb, true);
+};
 async function showInfoPanel() {
   const a = curItem(), panel = $("#vPanel"); if (!a) return;
   panel.classList.remove("hidden"); panel.replaceChildren(el("p", null, tr("common.loading")));
@@ -1105,11 +1135,15 @@ let pinch0 = 0, pinchS = 1, downX = 0, downY = 0, moved = false;
 stage.addEventListener("wheel", (e) => { if (e.target.tagName === "VIDEO") return; e.preventDefault(); zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0018))); }, { passive: false });
 let tapTimer = 0;
 stage.addEventListener("dblclick", (e) => { clearTimeout(tapTimer); if (e.target.tagName === "VIDEO") return; if (vz.s > 1) resetZoom(); else zoomAt(e.clientX, e.clientY, 2.5); });
+let drag = null; // swipe in progress: { d, nb, lx, lt, vx }
 stage.addEventListener("pointerdown", (e) => {
-  if (e.target.tagName === "VIDEO") return;
+  if (e.target.tagName === "VIDEO" || paging) return;
   stage.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (ptrs.size === 1) { downX = e.clientX; downY = e.clientY; moved = false; }
-  if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); pinchS = vz.s; }
+  if (ptrs.size === 2) {
+    const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); pinchS = vz.s;
+    if (drag) { drag.nb && drag.nb.remove(); drag = null; const c = currentEl(); if (c) c.style.transform = ""; } // second finger: pinch instead of swipe
+  }
 });
 stage.addEventListener("pointermove", (e) => {
   const p = ptrs.get(e.pointerId); if (!p) return;
@@ -1118,13 +1152,27 @@ stage.addEventListener("pointermove", (e) => {
     const [a, b] = [...ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
     if (pinch0) zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, (pinchS * d) / pinch0 / vz.s);
   } else if (vz.s > 1) { vz.x += dx; vz.y += dy; moved = true; applyZoom(); }
+  else if (!paging) { // swipe: the photo follows the finger and the neighbour slides in
+    const tx = e.clientX - downX, ty = e.clientY - downY;
+    if (!drag && Math.abs(tx) > 8 && Math.abs(tx) > Math.abs(ty)) drag = { d: 0, nb: null, lx: e.clientX, lt: e.timeStamp, vx: 0 };
+    if (!drag) return;
+    moved = true;
+    const d = tx < 0 ? 1 : -1, w = stage.clientWidth, cur = currentEl();
+    if (d !== drag.d) { if (drag.nb) drag.nb.remove(); drag.d = d; drag.nb = makeNeighbour(d); }
+    const dt = e.timeStamp - drag.lt; if (dt > 0) { drag.vx = 0.4 * drag.vx + 0.6 * ((e.clientX - drag.lx) / dt); drag.lx = e.clientX; drag.lt = e.timeStamp; }
+    if (cur) { cur.style.transition = "none"; cur.style.transform = `translateX(${drag.nb ? tx : tx * 0.3}px)`; } // resistance without neighbour
+    if (drag.nb) { drag.nb.style.transition = "none"; drag.nb.style.transform = `translateX(${d * w + tx}px)`; }
+  }
 });
 const endPtr = (e) => {
   if (!ptrs.has(e.pointerId)) return;
   const wasSingle = ptrs.size === 1; ptrs.delete(e.pointerId);
   const dx = e.clientX - downX, dy = e.clientY - downY;
-  if (wasSingle && vz.s === 1 && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) step(dx < 0 ? 1 : -1);
-  else if (wasSingle && Math.hypot(dx, dy) < 6 && !moved) { // einfacher Klick/Tipp: Bedienelemente aus- bzw. einblenden
+  if (drag) {
+    const dd = drag; drag = null;
+    const fast = Math.abs(dd.vx) > 0.4 && Math.sign(dd.vx) === -dd.d; // flick in the direction of the neighbour
+    finishPage(dd.d, dd.nb, !!dd.nb && (Math.abs(dx) > stage.clientWidth * 0.25 || fast));
+  } else if (wasSingle && Math.hypot(dx, dy) < 6 && !moved) { // einfacher Klick/Tipp: Bedienelemente aus- bzw. einblenden
     clearTimeout(tapTimer); tapTimer = setTimeout(() => setImmersive(!$("#viewer").classList.contains("immersive")), 260);
   }
   pinch0 = 0;
