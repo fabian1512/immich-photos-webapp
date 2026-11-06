@@ -223,8 +223,18 @@ function gridAppend(items) {
   renderVisible(); updateDate();
 }
 // Recompute everything (zoom, window size, deleted photos) and keep the current position in view.
-function gridRelayout() {
+// Animated: visible tiles glide from their old to their new position and size (FLIP), new ones fade in.
+function gridRelayout(animate) {
   if (!grid.el || !state.feed) return;
+  let olds = null;
+  if (animate) {
+    olds = new Map();
+    for (const row of grid.rendered.values()) for (const t of row.children) {
+      const r = t.getBoundingClientRect();
+      if (r.bottom > -50 && r.top < innerHeight + 50) olds.set(t.dataset.id, { t, r });
+    }
+    grid.reuse = new Map([...olds].map(([id, o]) => [id, o.t]));
+  }
   const main = $("#main"), viewTop = main.scrollTop - grid.el.offsetTop;
   const ar = Layout.rowAt(grid.rows, ly(viewTop)), anchor = ar >= 0 ? grid.rows[ar].start : 0;
   const atEnd = state.rev && main.scrollHeight - main.scrollTop - main.clientHeight < 4;
@@ -238,9 +248,29 @@ function gridRelayout() {
   if (atEnd) main.scrollTop = main.scrollHeight;
   else if (nr) main.scrollTop = grid.el.offsetTop + vtop(nr);
   renderVisible(); updateDate(); loadIfNearEnd();
+  if (olds) { grid.reuse = null; flipTiles(olds); }
+}
+function flipTiles(olds) {
+  const moved = [];
+  for (const row of grid.rendered.values()) for (const t of row.children) {
+    const o = olds.get(t.dataset.id), n = t.getBoundingClientRect();
+    t.style.transition = "none"; t.style.transformOrigin = "0 0";
+    if (o && n.width && n.height) t.style.transform = `translate(${o.r.left - n.left}px,${o.r.top - n.top}px) scale(${o.r.width / n.width},${o.r.height / n.height})`;
+    else if (n.bottom > 0 && n.top < innerHeight) t.style.opacity = "0";
+    else continue;
+    moved.push(t);
+  }
+  if (!moved.length) return;
+  document.body.offsetWidth; // apply the start state, then animate to the new one
+  for (const t of moved) { t.style.transition = "transform .28s cubic-bezier(.2,.8,.2,1), opacity .28s"; t.style.transform = ""; t.style.opacity = ""; }
+  setTimeout(() => { for (const t of moved) { t.style.transition = ""; t.style.transformOrigin = ""; } }, 320);
 }
 function makeTile(a, idx) {
-  const t = el("button", "tile");
+  const size = ZOOMS[state.zoom] > 150 ? "preview" : "thumbnail";
+  // Zoom animation: keep the already loaded tile (no reload, no flash) if it has the same image size.
+  const old = grid.reuse && grid.reuse.get(a.id);
+  if (old && old.dataset.sz === size) { grid.reuse.delete(a.id); old.dataset.idx = idx; old.classList.toggle("sel", state.sel.ids.has(a.id)); return old; }
+  const t = el("button", "tile"); t.dataset.sz = size;
   t.dataset.id = a.id; t.dataset.idx = idx;
   t.setAttribute("aria-label", a.originalFileName || tr("common.photo"));
   const i = el("img"); i.decoding = "async"; i.alt = "";
@@ -248,7 +278,7 @@ function makeTile(a, idx) {
   if (hash) t.style.backgroundImage = `url(${hash})`;
   i.onload = () => i.classList.add("loaded");
   i.onerror = () => t.classList.add("missing"); // thumbnail missing on the server: show a placeholder instead of a gap
-  i.src = img(a.id, ZOOMS[state.zoom] > 150 ? "preview" : "thumbnail");
+  i.src = img(a.id, size);
   t.append(i, el("span", "check"));
   if (a.type === "VIDEO") { const s = parseDuration(a.duration); t.append(el("span", "badge b-dur", s ? fmtDuration(s) : "▶")); }
   if (a.isFavorite) t.append(el("span", "badge b-fav", "♥"));
@@ -435,11 +465,11 @@ function zoom(d) { zoomTo(level() + d); }
 function zoomTo(target) {
   const lib = state.view === "library", cur = level(), n = Math.min(maxLevel(), Math.max(0, target));
   if (n === cur) return;
-  if (!lib) { state.zoom = n; store.set("zoom3", n); syncControls(); gridRelayout(); return; }
+  if (!lib) { state.zoom = n; store.set("zoom3", n); syncControls(); gridRelayout(true); return; }
   const mode = n === 0 ? "years" : n === 1 ? "months" : "all", z = n >= 2 ? n - 2 : state.zoom;
   const modeChanged = mode !== state.mode;
   state.mode = mode; state.zoom = z; store.set("mode", mode); store.set("zoom3", z);
-  if (modeChanged) showLibrary(); else { syncControls(); gridRelayout(); }
+  if (modeChanged) showLibrary(); else { syncControls(); gridRelayout(true); }
 }
 $("#zOut").onclick = () => zoom(-1); $("#zIn").onclick = () => zoom(1);
 
@@ -1060,6 +1090,13 @@ function showViewer(reuse) {
   }
   if (!$("#vPanel").classList.contains("hidden")) showInfoPanel();
   if (vIndex > state.feed.items.length - 20) loadMore();
+  preloadNeighbours();
+}
+// Load the previews of both neighbours ahead, so they are already there when sliding in.
+const preloaded = [];
+function preloadNeighbours() {
+  preloaded.length = 0;
+  for (const d of [1, -1]) { const n = idxFor(d); if (n >= 0 && state.feed.items[n].type !== "VIDEO") { const i = new Image(); i.src = img(state.feed.items[n].id, "preview"); preloaded.push(i); } }
 }
 // d is the visual direction (1 = right). In the mirrored grid the right neighbour is the newer photo.
 const idxFor = (d) => { const n = vIndex + (state.rev ? -d : d); return n >= 0 && n < state.feed.items.length ? n : -1; };
@@ -1071,13 +1108,14 @@ function makeNeighbour(d) {
   $("#vStage").append(i); return i;
 }
 const currentEl = () => $("#vStage").querySelector(":scope > :not(.nb)");
+const SLIDE_GAP = 24; // black gap between two photos while sliding
 const SLIDE = "transform .26s cubic-bezier(.2,.8,.2,1)";
 // Finishes the slide: commit = switch to the neighbour, otherwise spring back.
 function finishPage(d, nb, commit) {
   const cur = currentEl(), w = $("#vStage").clientWidth; paging = true;
   for (const e of [cur, nb]) if (e) e.style.transition = SLIDE;
-  if (cur) cur.style.transform = `translateX(${commit ? -d * w : 0}px)`;
-  if (nb) nb.style.transform = `translateX(${commit ? 0 : d * w}px)`;
+  if (cur) cur.style.transform = `translateX(${commit ? -d * (w + SLIDE_GAP) : 0}px)`;
+  if (nb) nb.style.transform = `translateX(${commit ? 0 : d * (w + SLIDE_GAP)}px)`;
   setTimeout(() => {
     paging = false;
     if (commit && nb) { vIndex = idxFor(d); showViewer(curItem().type === "VIDEO" ? null : nb); } else if (nb) nb.remove();
@@ -1088,7 +1126,7 @@ function finishPage(d, nb, commit) {
 const step = (d) => {
   if (vIndex < 0 || paging) return;
   const nb = makeNeighbour(d); if (!nb) return;
-  nb.style.transform = `translateX(${d * $("#vStage").clientWidth}px)`; nb.offsetWidth; // start position, then animate
+  nb.style.transform = `translateX(${d * ($("#vStage").clientWidth + SLIDE_GAP)}px)`; nb.offsetWidth; // start position, then animate
   finishPage(d, nb, true);
 };
 async function showInfoPanel() {
@@ -1161,7 +1199,7 @@ stage.addEventListener("pointermove", (e) => {
     if (d !== drag.d) { if (drag.nb) drag.nb.remove(); drag.d = d; drag.nb = makeNeighbour(d); }
     const dt = e.timeStamp - drag.lt; if (dt > 0) { drag.vx = 0.4 * drag.vx + 0.6 * ((e.clientX - drag.lx) / dt); drag.lx = e.clientX; drag.lt = e.timeStamp; }
     if (cur) { cur.style.transition = "none"; cur.style.transform = `translateX(${drag.nb ? tx : tx * 0.3}px)`; } // resistance without neighbour
-    if (drag.nb) { drag.nb.style.transition = "none"; drag.nb.style.transform = `translateX(${d * w + tx}px)`; }
+    if (drag.nb) { drag.nb.style.transition = "none"; drag.nb.style.transform = `translateX(${d * (w + SLIDE_GAP) + tx}px)`; }
   }
 });
 const endPtr = (e) => {

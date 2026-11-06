@@ -8,6 +8,7 @@
 - Photo grids show the newest photos at the bottom and open at the end (like the iOS Photos app); search results keep their order
 - Photos load earlier and on every scroll, shared people show their photos for partner libraries
 - Viewer: the photo follows the finger when swiping, the neighbour slides in (also for arrow keys and buttons)
+- Zoom steps in the grid animate (tiles glide to their new position and size instead of jumping); neighbour photos are preloaded and slide in with a gap
 
 ## 0.1.1
 
