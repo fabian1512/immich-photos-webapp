@@ -179,6 +179,7 @@ class BucketFeed {
   }
 }
 
+window.__logContext = () => ({ view: state.view, mode: state.mode, zoom: state.zoom, rev: state.rev, items: state.feed ? state.feed.items.length : 0, tiles: document.querySelectorAll(".vgrid .tile").length, viewer: vIndex >= 0 });
 // ---------- Zustand ----------
 const GAP = 10;
 const ZOOMS = [60, 72, 86, 104, 125, 150, 180, 215, 250, 290];
@@ -463,6 +464,9 @@ function level() { return state.view === "library" ? (state.mode === "years" ? 0
 function maxLevel() { return state.view === "library" ? 1 + ZOOMS.length : ZOOMS.length - 1; }
 function zoom(d) { zoomTo(level() + d); }
 function zoomTo(target) {
+  const t0 = performance.now(); zoomToInner(target); Log.log("zoom", { to: target, ms: Math.round(performance.now() - t0) });
+}
+function zoomToInner(target) {
   const lib = state.view === "library", cur = level(), n = Math.min(maxLevel(), Math.max(0, target));
   if (n === cur) return;
   if (!lib) { state.zoom = n; store.set("zoom3", n); syncControls(); gridRelayout(true); return; }
@@ -1174,6 +1178,7 @@ stage.addEventListener("wheel", (e) => { if (e.target.tagName === "VIDEO") retur
 let tapTimer = 0;
 stage.addEventListener("dblclick", (e) => { clearTimeout(tapTimer); if (e.target.tagName === "VIDEO") return; if (vz.s > 1) resetZoom(); else zoomAt(e.clientX, e.clientY, 2.5); });
 let drag = null; // swipe in progress: { d, nb, lx, lt, vx }
+let swipeStat = { moves: 0 }; // for diagnostics: how the gesture arrived
 stage.addEventListener("pointerdown", (e) => {
   if (e.target.tagName === "VIDEO" || paging) return;
   stage.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -1194,7 +1199,7 @@ stage.addEventListener("pointermove", (e) => {
     const tx = e.clientX - downX, ty = e.clientY - downY;
     if (!drag && Math.abs(tx) > 8 && Math.abs(tx) > Math.abs(ty)) drag = { d: 0, nb: null, lx: e.clientX, lt: e.timeStamp, vx: 0 };
     if (!drag) return;
-    moved = true;
+    moved = true; swipeStat.moves++;
     const d = tx < 0 ? 1 : -1, w = stage.clientWidth, cur = currentEl();
     if (d !== drag.d) { if (drag.nb) drag.nb.remove(); drag.d = d; drag.nb = makeNeighbour(d); }
     const dt = e.timeStamp - drag.lt; if (dt > 0) { drag.vx = 0.4 * drag.vx + 0.6 * ((e.clientX - drag.lx) / dt); drag.lx = e.clientX; drag.lt = e.timeStamp; }
@@ -1206,11 +1211,16 @@ const endPtr = (e) => {
   if (!ptrs.has(e.pointerId)) return;
   const wasSingle = ptrs.size === 1; ptrs.delete(e.pointerId);
   const dx = e.clientX - downX, dy = e.clientY - downY;
+  if (e.type === "pointercancel") Log.log("pointercancel", { dragging: !!drag, moves: swipeStat.moves });
   if (drag) {
     const dd = drag; drag = null;
     const fast = Math.abs(dd.vx) > 0.4 && Math.sign(dd.vx) === -dd.d; // flick in the direction of the neighbour
-    finishPage(dd.d, dd.nb, !!dd.nb && (Math.abs(dx) > stage.clientWidth * 0.25 || fast));
-  } else if (wasSingle && Math.hypot(dx, dy) < 6 && !moved) { // einfacher Klick/Tipp: Bedienelemente aus- bzw. einblenden
+    const commit = !!dd.nb && (Math.abs(dx) > stage.clientWidth * 0.25 || fast);
+    Log.log("swipe", { moves: swipeStat.moves, dx: Math.round(dx), vx: +dd.vx.toFixed(2), commit, neighbour: !!dd.nb, type: e.type });
+    swipeStat = { moves: 0 };
+    finishPage(dd.d, dd.nb, commit);
+  } else if (wasSingle && vz.s === 1 && Math.abs(dx) > 40) Log.log("swipe-nodrag", { dx: Math.round(dx), dy: Math.round(dy), moves: swipeStat.moves, type: e.type });
+  else if (wasSingle && Math.hypot(dx, dy) < 6 && !moved) { // einfacher Klick/Tipp: Bedienelemente aus- bzw. einblenden
     clearTimeout(tapTimer); tapTimer = setTimeout(() => setImmersive(!$("#viewer").classList.contains("immersive")), 260);
   }
   pinch0 = 0;

@@ -9,6 +9,7 @@
 - Photos load earlier and on every scroll, shared people show their photos for partner libraries
 - Viewer: the photo follows the finger when swiping, the neighbour slides in (also for arrow keys and buttons)
 - Zoom steps in the grid animate (tiles glide to their new position and size instead of jumping); neighbour photos are preloaded and slide in with a gap
+- Client diagnostics: errors, stalls and gesture data are written to the container log (`POST /log`)
 
 ## 0.1.1
 

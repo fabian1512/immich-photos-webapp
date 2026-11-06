@@ -141,3 +141,7 @@ exists, no unknown keys or placeholders in translations).
 ## License
 
 [MIT](LICENSE). Third-party notices: [THIRD-PARTY.md](THIRD-PARTY.md).
+
+## Diagnostics
+
+The page sends errors, main-thread stalls (frozen page) and swipe/zoom diagnostics to `POST /log`; the server prints them as `[client] {...}` lines in the container log (`docker logs fotos-web`). No photo IDs, file names or credentials are included.

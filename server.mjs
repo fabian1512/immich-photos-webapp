@@ -13,6 +13,7 @@ const types = {
   ".svg": "image/svg+xml", ".png": "image/png", ".webmanifest": "application/manifest+json", ".json": "application/json; charset=utf-8",
 };
 
+let logWindow = [];
 http.createServer((req, res) => {
   if (req.url.startsWith("/api/")) {
     const headers = { ...req.headers, host: target.host };
@@ -33,6 +34,22 @@ http.createServer((req, res) => {
       }).sort((a, b) => (a.code === "en" ? -1 : b.code === "en" ? 1 : a.name.localeCompare(b.name)));
       res.writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" }); return res.end(JSON.stringify(list));
     } catch { res.writeHead(500); return res.end("[]"); }
+  }
+  if (req.url === "/log" && req.method === "POST") {
+    // Client diagnostics (errors, stalls, gesture data) end up in the container log: `docker logs fotos-web`.
+    // No photo IDs or credentials are ever sent by the client. Size and rate are limited.
+    const now = Date.now(); logWindow = logWindow.filter((t) => now - t < 60000);
+    if (logWindow.length >= 120) { res.writeHead(429); return res.end(); }
+    logWindow.push(now);
+    let body = ""; let big = false;
+    req.on("data", (c) => { if ((body += c).length > 8192) { big = true; req.destroy(); } });
+    req.on("end", () => {
+      if (big) return;
+      try { for (const e of [].concat(JSON.parse(body)).slice(0, 20)) console.log("[client]", JSON.stringify(e).slice(0, 600)); } catch {}
+      res.writeHead(204); res.end();
+    });
+    req.on("error", () => {});
+    return;
   }
   if (req.url === "/healthz") { res.writeHead(200, { "content-type": "text/plain" }); return res.end("ok"); }
   let p = decodeURIComponent(new URL(req.url, "http://x").pathname);
