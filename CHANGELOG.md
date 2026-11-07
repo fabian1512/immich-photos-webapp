@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Mobile look closer to iOS Photos: black background in dark mode, translucent glass controls, large title, header that fades into the photos, header subtitle shows the item count at the end and the date range of the visible photos otherwise, badges without dark pill, filled tab bar icons; opaque controls with "Increase Contrast"
 - Display menu: sort All Photos by added or taken date, filter (all, favorites, photos, videos), badge on photos of partner libraries (can be switched off)
 - All Photos: three zoom steps (5 / 3 / 1 photos per row on a phone, scaled on larger screens) and two grid shapes, square (default) or original aspect ratio; both in a new display menu in the top bar (replaces the −/+ buttons)
 - Grouped sidebar and floating mobile tab bar, pinch / zoom steps through years, months and all photos

@@ -12,11 +12,12 @@ const store = {
 };
 const tr = I18n.t; // "t" is used as a local variable name in many places
 // Formatters depend on the chosen language; created in setupFormats() once the language is known.
-let fmt, monthFmt, dateFmt, nf, MONTHS;
+let fmt, monthFmt, dateFmt, rangeFmt, nf, MONTHS;
 function setupFormats() {
   const loc = I18n.lang;
   fmt = (o) => new Intl.DateTimeFormat(loc, { ...o, timeZone: "UTC" });
   monthFmt = fmt({ month: "long", year: "numeric" });
+  rangeFmt = fmt({ day: "numeric", month: "short", year: "numeric" });
   dateFmt = fmt({ dateStyle: "long", timeStyle: "short" });
   nf = new Intl.NumberFormat(loc);
   MONTHS = Array.from({ length: 12 }, (_, i) => fmt({ month: "long" }).format(new Date(Date.UTC(2000, i, 1))));
@@ -336,15 +337,36 @@ $("#content").addEventListener("click", (e) => {
 });
 
 let dateRaf = 0;
+// Header subtitle like the iOS Photos app: the number of items when scrolled to the very end (newest), otherwise the date
+// range of the photos currently on screen.
+function totalCount() {
+  const f = state.feed;
+  if (state.view === "library" && state.mode === "all" && state.filter === "all" && f && f.isLibrary) {
+    if (state.buckets) return state.buckets.reduce((n, b) => n + b.count, 0);
+    loadBuckets().then(() => updateDate()).catch(() => {});
+    return null;
+  }
+  return f && f.done ? f.items.length : null;
+}
 function updateDate() {
   if (dateRaf) return;
   dateRaf = requestAnimationFrame(() => {
     dateRaf = 0;
     if (state.noDate || !state.feed || !grid.rows.length || state.view === "overview") return;
-    const y = ly($("#main").scrollTop - grid.el.offsetTop + 70);
-    const r = grid.rows[Math.max(0, Layout.rowAt(grid.rows, y))];
-    const a = r && state.feed.items[r.start];
-    $("#tDate").textContent = a && a._date ? monthFmt.format(a._date) : "";
+    const main = $("#main"), top = main.scrollTop - grid.el.offsetTop, bottom = top + main.clientHeight - 90;
+    if (state.rev && main.scrollHeight - main.scrollTop - main.clientHeight < 40) {
+      const n = totalCount();
+      if (n != null) { $("#tDate").textContent = tr("count.items", { count: n, n: nf.format(n) }); return; }
+    }
+    const [y1, y2] = state.rev ? [ly(bottom), ly(top + 60)] : [top + 60, bottom]; // y1 = newer end in layout coordinates
+    const rows = grid.rows, items = state.feed.items;
+    const r1 = rows[Math.max(0, Layout.rowAt(rows, y1))], r2 = rows[Math.max(0, Layout.rowAt(rows, y2))];
+    const newer = r1 && items[r1.start], older = r2 && items[r2.end - 1];
+    const dn = newer && newer._date, dOld = older && older._date;
+    let txt = "";
+    if (dn && dOld) { const a = dOld <= dn ? dOld : dn, b = dOld <= dn ? dn : dOld; txt = rangeFmt.format(a) === rangeFmt.format(b) ? rangeFmt.format(a) : rangeFmt.formatRange(a, b); }
+    else if (dn || dOld) txt = rangeFmt.format(dn || dOld);
+    $("#tDate").textContent = txt;
   });
 }
 $("#main").addEventListener("scroll", () => { renderVisible(); updateDate(); loadIfNearEnd(); }, { passive: true });

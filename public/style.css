@@ -1,5 +1,5 @@
-:root{--people:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 18'%3E%3Ccircle cx='8' cy='5' r='3.6'/%3E%3Cpath d='M1 17c0-4 3-6.4 7-6.4s7 2.4 7 6.4z'/%3E%3Ccircle cx='17' cy='6' r='3'/%3E%3Cpath d='M16.4 11.2c4.3-.6 7.6 1.6 7.6 5.8h-6.6c0-2.3-.4-4.2-1-5.8z'/%3E%3C/svg%3E");--bg:#1c1c1e;--bg2:#2c2c2e;--side:#2b2a2c;--text:#f2f2f7;--dim:#98989f;--accent:#0a84ff;--r:12px;--bar:60px;--bar-bg:rgba(28,28,30,.78);--line:#ffffff14}
-@media (prefers-color-scheme: light){:root{--bg:#fff;--bg2:#ececf0;--side:#f2f2f7;--text:#1c1c1e;--dim:#6e6e73;--bar-bg:rgba(255,255,255,.78);--line:#00000014}}
+:root{--people:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 18'%3E%3Ccircle cx='8' cy='5' r='3.6'/%3E%3Cpath d='M1 17c0-4 3-6.4 7-6.4s7 2.4 7 6.4z'/%3E%3Ccircle cx='17' cy='6' r='3'/%3E%3Cpath d='M16.4 11.2c4.3-.6 7.6 1.6 7.6 5.8h-6.6c0-2.3-.4-4.2-1-5.8z'/%3E%3C/svg%3E");--bg:#000;--bg2:#1c1c1e;--glass:rgba(118,118,128,.30);--glass-edge:rgba(255,255,255,.16);--side:#2b2a2c;--text:#f2f2f7;--dim:#98989f;--accent:#0a84ff;--r:12px;--bar:60px;--bar-bg:rgba(28,28,30,.78);--line:#ffffff14}
+@media (prefers-color-scheme: light){:root{--bg:#fff;--glass:rgba(255,255,255,.6);--glass-edge:rgba(0,0,0,.07);--bg2:#ececf0;--side:#f2f2f7;--text:#1c1c1e;--dim:#6e6e73;--bar-bg:rgba(255,255,255,.78);--line:#00000014}}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
 .hidden{display:none!important}
@@ -264,3 +264,31 @@ nav .rowlabel svg{width:20px;height:20px;flex:none;fill:none;stroke:var(--accent
 .viewer.immersive .live-pill,.viewer.closing .live-pill{display:none!important}
 #vStage img{-webkit-touch-callout:none}
 @media (pointer:coarse){.viewer .live-pill{left:16px}}
+
+/* ---- Glass look (iOS-like): translucent buttons with blur and a light edge; pure black background in dark mode ---- */
+.g-menu,.tb-right .pill:not(.primary):not(.danger),.tabbar,.search-btn{background:var(--glass);-webkit-backdrop-filter:blur(22px) saturate(1.8);backdrop-filter:blur(22px) saturate(1.8);box-shadow:inset 0 0 0 1px var(--glass-edge),inset 0 1px 0 rgba(255,255,255,.14),0 2px 14px rgba(0,0,0,.28)}
+.g-ic{width:28px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.g-menu .g-ic{stroke-width:2.1}
+.tabbar a svg.tab-ic{width:28px;height:28px;fill:currentColor;stroke:none}
+#tabbar a.active{background:rgba(255,255,255,.14)}
+@media (prefers-color-scheme: light){#tabbar a.active{background:rgba(0,0,0,.07)}}
+/* Badges without a dark pill, like the iOS Photos app (readable through a soft shadow) */
+.badge{background:none;padding:0;text-shadow:0 0 3px #000b,0 1px 3px #0009}
+.b-dur{right:7px;bottom:5px}.b-fav{left:7px;bottom:5px;font-size:14px;padding:0}.b-live{padding:0}
+/* "Increase Contrast" in the iOS settings: opaque controls with a clear edge */
+@media (prefers-contrast: more){
+  :root{--glass:#2c2c2e;--glass-edge:rgba(255,255,255,.6)}
+  .g-menu,.tb-right .pill:not(.primary):not(.danger),.tabbar,.search-btn{-webkit-backdrop-filter:none;backdrop-filter:none}
+  .badge{text-shadow:0 0 2px #000,0 0 4px #000}
+}
+@media (prefers-contrast: more) and (prefers-color-scheme: light){:root{--glass:#f2f2f7;--glass-edge:rgba(0,0,0,.6)}}
+@media (max-width:720px),(pointer:coarse) and (max-height:500px){
+  :root{--bar:64px}
+  .t-title{font-size:34px;line-height:1.05;letter-spacing:-.4px}
+  .tb-left:has(#back:not(.hidden)) .t-title{font-size:22px}
+  .t-date{font-size:17px;font-weight:600;color:var(--text);line-height:1.25}
+  /* Photo grids run underneath the header, which fades into the photos with a progressive blur */
+  body:has(.vgrid) .topbar{background:none;border-bottom:0;-webkit-backdrop-filter:none;backdrop-filter:none;margin-bottom:calc(-1 * var(--bar))}
+  body:has(.vgrid) .topbar::before{content:"";position:absolute;inset:0 0 -30px 0;z-index:-1;pointer-events:none;background:linear-gradient(to bottom,color-mix(in srgb,var(--bg) 82%,transparent),color-mix(in srgb,var(--bg) 45%,transparent) 65%,transparent);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);-webkit-mask-image:linear-gradient(#000 50%,transparent);mask-image:linear-gradient(#000 50%,transparent)}
+  #content:has(.vgrid){padding-top:var(--bar)}
+}
