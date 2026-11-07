@@ -13,6 +13,7 @@ const types = {
   ".svg": "image/svg+xml", ".png": "image/png", ".webmanifest": "application/manifest+json", ".json": "application/json; charset=utf-8",
 };
 
+const BOOT = Date.now().toString(36);
 let logWindow = [];
 // /timeline/buckets (month counts) can take 20+ s on big libraries. Stale-while-revalidate cache, per user (auth header/cookie) and URL:
 // a repeat request is answered at once from memory while a fresh copy is fetched in the background. Only GET 200 JSON, memory only.
@@ -87,7 +88,10 @@ http.createServer((req, res) => {
   if (!file.startsWith(root)) { res.writeHead(403); return res.end(); }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404); return res.end("Nicht gefunden"); }
-    res.writeHead(200, { "content-type": types[path.extname(file)] || "application/octet-stream", "cache-control": "no-cache" });
+    // Scripts and styles get a per-start version in the page, so that no cache (browser, proxy, Cloudflare)
+    // can combine a new page with old scripts after an update.
+    if (p === "/index.html") data = Buffer.from(String(data).replace(/(src|href)="([^"?:/][^"?:]*\.(?:js|css))"/g, `$1="$2?v=${BOOT}"`));
+    res.writeHead(200, { "content-type": types[path.extname(file)] || "application/octet-stream", "cache-control": "no-cache", "cdn-cache-control": "no-store" });
     res.end(data);
   });
 }).listen(port, () => console.log(`http://localhost:${port}  ->  ${target.origin}`));
