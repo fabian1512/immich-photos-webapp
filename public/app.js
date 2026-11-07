@@ -1172,6 +1172,7 @@ const infoCache = new Map();
 const curItem = () => (state.feed && vIndex >= 0 ? state.feed.items[vIndex] : null);
 function openViewer(i) { vIndex = i; $("#viewer").classList.remove("hidden"); showViewer(); }
 function closeViewer() {
+  stopSlideshow();
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   liveStop(); $("#vLiveVideo").removeAttribute("src"); vIndex = -1; $("#viewer").classList.remove("immersive", "info-open", "closing"); $("#viewer").classList.add("hidden"); $("#vStage").replaceChildren(); $("#vPanel").classList.add("hidden");
   for (const e of [$("#vStage"), $("#vPanel"), $("#viewer")]) e.removeAttribute("style"); // leftovers of a swipe gesture
@@ -1305,16 +1306,107 @@ async function shareItem(a) {
 }
 $("#vShare").onclick = guard(async () => { const a = curItem(); if (a) await shareItem(a); });
 const moreMenu = $("#vMoreMenu"), closeMore = () => moreMenu.classList.add("hidden");
+const VI = (d) => `<svg viewBox="0 0 24 24" class="vi">${d}</svg>`;
+const MENU_ICON = {
+  copy: VI('<rect x="8.5" y="8.5" width="11" height="11.5" rx="2"/><path d="M15.5 8.5V6a2 2 0 00-2-2H6.5a2 2 0 00-2 2v9.5a2 2 0 002 2H8.5"/>'),
+  archive: VI('<path d="M3.5 6.5h17v3.5h-17zM5 10v8.5A1.5 1.5 0 006.5 20h11a1.5 1.5 0 001.5-1.5V10M10 14h4"/>'),
+  download: VI('<path d="M12 4v11M7.5 11l4.5 4.5 4.5-4.5M5 20h14"/>'),
+  play: VI('<rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="M10.5 9.5v5l4.2-2.5z" class="fl"/>'),
+  album: VI('<rect x="3.5" y="6.5" width="14" height="11" rx="2"/><path d="M7 4.5h13a1 1 0 011 1V15M6 15.5l3.2-3.2 2.6 2.4 2-2 2.2 2.8"/>'),
+  info: VI('<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.2"/><circle cx="12" cy="7.9" r=".6" class="fl"/>'),
+  chev: VI('<path d="M9.5 6l6 6-6 6"/>'),
+};
+async function copyPhoto(a) {
+  // Safari wants clipboard.write() to be called right inside the tap, so a promise for the PNG is handed over.
+  const png = fetch(img(a.id, "preview"), { credentials: "same-origin" }).then((r) => r.blob()).then(async (b) => {
+    const bmp = await createImageBitmap(b), c = document.createElement("canvas"); c.width = bmp.width; c.height = bmp.height;
+    c.getContext("2d").drawImage(bmp, 0, 0); return new Promise((ok, no) => c.toBlob((x) => (x ? ok(x) : no(new Error("png"))), "image/png"));
+  });
+  await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
+}
+async function archiveCurrent() {
+  const a = curItem(); if (!a) return;
+  await api("/assets", { method: "PUT", body: JSON.stringify({ ids: [a.id], visibility: "archive" }) });
+  removeItems(new Set([a.id])); toast(tr("viewer.archived"));
+  if (!state.feed.items.length) return closeViewer();
+  vIndex = Math.min(vIndex, state.feed.items.length - 1); showViewer();
+}
+// Slideshow: advances to the next photo every few seconds (videos play to the end); a tap or closing the viewer stops it.
+let slide = null, slideTapStop = false;
+function stopSlideshow() { if (slide) { clearInterval(slide); slide = null; setImmersive(false); } }
+function startSlideshow() {
+  stopSlideshow(); setImmersive(true);
+  slide = setInterval(() => {
+    if (vIndex < 0 || paging) return;
+    const v = $("#vStage video"); if (v && !v.ended) return;
+    if (idxFor(1) < 0) return stopSlideshow();
+    step(1);
+  }, 3500);
+}
+// Adjust date, place and description of the current photo (Immich: PUT /assets/{id}).
+const pad2 = (n) => String(n).padStart(2, "0");
+async function openInfoEdit() {
+  const a = curItem(); if (!a) return;
+  const info = infoCache.get(a.id) || await api(`/assets/${a.id}`); infoCache.set(a.id, info);
+  const x = info.exifInfo || {};
+  $("#ieDate").value = a._date ? a._date.toISOString().slice(0, 19) : "";
+  $("#ieLat").value = x.latitude != null ? x.latitude : ""; $("#ieLon").value = x.longitude != null ? x.longitude : "";
+  $("#ieDesc").value = x.description || "";
+  $("#infoDialog").dataset.offset = String(a._date && x.dateTimeOriginal && !isNaN(Date.parse(x.dateTimeOriginal)) ? Math.round((a._date - Date.parse(x.dateTimeOriginal)) / 60000) : -new Date().getTimezoneOffset());
+  $("#infoDialog").showModal();
+}
+$("#ieCancel").onclick = () => $("#infoDialog").close();
+$("#ieSave").onclick = guard(async () => {
+  const a = curItem(); if (!a) return;
+  const body = {}, v = $("#ieDate").value;
+  if (v) { const off = +$("#infoDialog").dataset.offset || 0, ab = Math.abs(off); body.dateTimeOriginal = `${v.length === 16 ? v + ":00" : v}${off < 0 ? "-" : "+"}${pad2(Math.floor(ab / 60))}:${pad2(ab % 60)}`; }
+  const la = $("#ieLat").value.trim().replace(",", "."), lo = $("#ieLon").value.trim().replace(",", ".");
+  if (la !== "" && lo !== "" && isFinite(la) && isFinite(lo)) { body.latitude = +la; body.longitude = +lo; }
+  body.description = $("#ieDesc").value;
+  await api(`/assets/${a.id}`, { method: "PUT", body: JSON.stringify(body) });
+  infoCache.delete(a.id); $("#infoDialog").close(); toast(tr("viewer.infoSaved"));
+  if (!$("#vPanel").classList.contains("hidden")) showInfoPanel();
+});
+// Edit (rotate / flip) through Immich's non-destructive asset edits (PUT /assets/{id}/edits)
+function refreshPreview(a) {
+  const bust = (src) => src + (src.includes("?") ? "&" : "?") + "v=" + Date.now();
+  for (const delay of [2500, 7000]) setTimeout(() => {
+    if (curItem() && curItem().id === a.id) { const i = $("#vStage").querySelector(":scope > img:not(.nb)"); if (i) i.src = bust(img(a.id, "preview")); }
+    for (const t of document.querySelectorAll(`.tile[data-id="${a.id}"] img`)) t.src = bust(img(a.id, t.parentElement.dataset.sz === "preview" ? "preview" : "thumbnail"));
+  }, delay);
+}
+const EDIT_ACTIONS = { rotL: { action: "rotate", parameters: { angle: 270 } }, rotR: { action: "rotate", parameters: { angle: 90 } }, mirH: { action: "mirror", parameters: { axis: "horizontal" } }, mirV: { action: "mirror", parameters: { axis: "vertical" } } };
+$("#vEdit").onclick = () => { if (curItem()) $("#editDialog").showModal(); };
+$("#editDone").onclick = () => $("#editDialog").close();
+$("#editDialog").addEventListener("click", (e) => guard(async () => {
+  const b = e.target.closest("[data-edit]"), a = curItem(); if (!b || !a) return;
+  const cur = await api(`/assets/${a.id}/edits`).catch(() => ({ edits: [] }));
+  const edits = ((cur && cur.edits) || []).map((x) => ({ action: x.action, parameters: x.parameters }));
+  edits.push(EDIT_ACTIONS[b.dataset.edit]);
+  await api(`/assets/${a.id}/edits`, { method: "PUT", body: JSON.stringify({ edits }) });
+  toast(tr("edit.saved")); refreshPreview(a);
+})());
+$("#editReset").onclick = guard(async () => {
+  const a = curItem(); if (!a) return;
+  await api(`/assets/${a.id}/edits`, { method: "DELETE" }); toast(tr("edit.saved")); refreshPreview(a);
+});
 $("#vMore").onclick = (e) => {
   e.stopPropagation();
   if (!moreMenu.classList.contains("hidden")) return closeMore();
-  const a = curItem(); if (!a) return;
-  const mk = (label, fn) => { const b = el("button", null, label); b.setAttribute("role", "menuitem"); b.onclick = (ev) => { ev.stopPropagation(); closeMore(); fn(); }; return b; };
-  moreMenu.replaceChildren(
-    mk(tr("viewer.info"), () => { if ($("#vPanel").classList.contains("hidden")) $("#vInfoBtn").click(); }),
-    mk(tr("albums.addTitle"), guard(async () => { const x = curItem(); if (x) await addToAlbum([x]); })),
-    mk(tr("viewer.download"), guard(async () => { const x = curItem(); if (x) await downloadItems([x]); })),
+  if (!curItem()) return;
+  const act = (fn) => (ev) => { ev.stopPropagation(); closeMore(); fn(); };
+  const tile = (icon, label, fn) => { const b = el("button", "vm-tile"); b.innerHTML = icon; b.append(el("span", null, label)); b.onclick = act(fn); return b; };
+  const item = (icon, label, fn, chev) => { const b = el("button", "vm-item"); b.innerHTML = icon; b.append(el("span", null, label)); if (chev) { const c = el("i"); c.innerHTML = MENU_ICON.chev; b.append(c); } b.onclick = act(fn); return b; };
+  const row = el("div", "vm-row");
+  row.append(
+    tile(MENU_ICON.copy, tr("viewer.copy"), guard(async () => { const x = curItem(); if (!x) return; try { await copyPhoto(x); toast(tr("viewer.copied")); } catch { toast(tr("viewer.copyFailed"), true); } })),
+    tile(MENU_ICON.archive, tr("viewer.archive"), guard(archiveCurrent)),
+    tile(MENU_ICON.download, tr("viewer.download"), guard(async () => { const x = curItem(); if (x) await downloadItems([x]); })),
   );
+  moreMenu.replaceChildren(row, el("hr"),
+    item(MENU_ICON.play, tr("viewer.slideshow"), startSlideshow), el("hr"),
+    item(MENU_ICON.album, tr("albums.addTitle"), guard(async () => { const x = curItem(); if (x) await addToAlbum([x]); }), true),
+    item(MENU_ICON.info, tr("viewer.editInfo"), guard(openInfoEdit), true));
   moreMenu.classList.remove("hidden");
 };
 addEventListener("click", (e) => { if (!e.target.closest("#vMoreMenu")) closeMore(); });
@@ -1530,8 +1622,10 @@ function paintDrag(dd) {
   if (cur) { cur.style.transition = "none"; cur.style.transform = `translate3d(${dd.nb ? tx : tx * 0.3}px,0,0)`; } // resistance without neighbour
   if (dd.nb) { dd.nb.style.transition = "none"; dd.nb.style.transform = `translate3d(${dd.d * slideW() + tx}px,0,0)`; }
 }
+stage.addEventListener("pointerdown", () => { if (slide) { stopSlideshow(); slideTapStop = true; } }, true);
 const endPtr = (e) => {
   if (!ptrs.has(e.pointerId)) return;
+  const skipTap = slideTapStop; slideTapStop = false;
   const wasSingle = ptrs.size === 1; ptrs.delete(e.pointerId);
   liveStop();
   const dx = e.clientX - downX, dy = e.clientY - downY;
@@ -1545,7 +1639,7 @@ const endPtr = (e) => {
     swipeStat = { moves: 0 };
     finishPage(dd.d, dd.nb, commit);
   } else if (wasSingle && vz.s === 1 && Math.abs(dx) > 40) Log.log("swipe-nodrag", { dx: Math.round(dx), dy: Math.round(dy), moves: swipeStat.moves, how: e.type });
-  else if (wasSingle && !fromVideo && Math.hypot(dx, dy) < 6 && !moved) { // einfacher Klick/Tipp: Bedienelemente aus- bzw. einblenden
+  else if (wasSingle && !fromVideo && !skipTap && Math.hypot(dx, dy) < 6 && !moved) { // einfacher Klick/Tipp: Bedienelemente aus- bzw. einblenden
     clearTimeout(tapTimer); tapTimer = setTimeout(() => setImmersive(!$("#viewer").classList.contains("immersive")), 260);
   }
   pinch0 = 0;

@@ -245,7 +245,7 @@ nav .rowlabel svg{width:20px;height:20px;flex:none;fill:none;stroke:var(--accent
 
 /* Touch devices: info as a bottom sheet instead of the side panel; opened by swiping up on the photo */
 @media (pointer:coarse){
-  #vInfoBtn,#vClose{display:none}
+  #vClose{display:none}
   #vStage{transition:transform .38s cubic-bezier(.22,.7,.2,1)}
   .v-panel{position:fixed;left:0;right:0;top:auto;bottom:0;width:auto;height:62vh;border-radius:18px 18px 0 0;padding:22px 18px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px #0008;transform:translateY(100%);transition:transform .38s cubic-bezier(.22,.7,.2,1)}
   .v-panel.hidden{display:block!important;visibility:hidden}
@@ -313,7 +313,9 @@ nav .rowlabel svg{width:20px;height:20px;flex:none;fill:none;stroke:var(--accent
   .viewer .live-pill{top:calc(max(12px,env(safe-area-inset-top)) + 62px);left:16px}
   .v-tools{top:auto;left:20px;right:20px;bottom:max(14px,env(safe-area-inset-bottom));justify-content:space-between;align-items:center;gap:10px}
   .v-tools button{width:56px;height:56px}
-  #vShare{display:block;order:1}#vFav{order:2;width:150px;border-radius:28px}#vDl{display:none}#vDel{order:3}#vFull{display:none}
+  #vShare{display:block;order:1}#vDl{display:none}#vDel{order:3}#vFull{display:none}
+  .v-pill{display:flex;order:2;align-items:center;justify-content:center;gap:4px;height:56px;padding:0 8px;border-radius:28px;background:rgba(88,88,94,.38);-webkit-backdrop-filter:blur(20px) saturate(1.8);backdrop-filter:blur(20px) saturate(1.8);box-shadow:inset 0 0 0 1px #ffffff26,inset 0 1px 0 #ffffff24}
+  .v-tools .v-pill button{width:48px;height:48px;background:none;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
   .v-film{display:flex;position:absolute;left:0;right:0;bottom:calc(max(14px,env(safe-area-inset-bottom)) + 70px);height:44px;justify-content:center;align-items:center;gap:2px;z-index:3;overflow:hidden;padding:0 8px}
   .v-film .fs{position:static;width:22px;height:34px;padding:0;border-radius:3px;overflow:hidden;background:#222;flex:none;opacity:.9;-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:none}
   .v-film .fs.cur{width:36px;height:44px;margin:0 6px;opacity:1}
@@ -339,3 +341,23 @@ nav .rowlabel svg{width:20px;height:20px;flex:none;fill:none;stroke:var(--accent
   body.tabs-seg .search-btn{width:48px;height:48px;bottom:max(12px,calc(env(safe-area-inset-bottom) - 12px))}
   body.tabs-seg .search-btn svg{width:24px;height:24px}
 }
+
+.v-pill{display:contents}
+@media (pointer:coarse){.v-pill{display:flex}}
+/* "..." menu like iOS: three tiles on top, then list entries */
+.viewer .v-menu{min-width:280px;padding:0;overflow:hidden}
+.vm-row{display:flex}
+.viewer .v-menu .vm-tile{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 4px 12px;font-size:14px;text-align:center;border-radius:0}
+.viewer .v-menu .vm-item{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:0;font-size:17px;width:100%}
+.viewer .v-menu .vm-item span{flex:1}
+.viewer .v-menu .vm-item i{display:block;width:20px;height:20px;opacity:.8}
+.v-menu hr{border:0;border-top:1px solid #ffffff22;margin:0 14px}
+.v-menu .vi{width:26px;height:26px;margin:0}
+.viewer .v-menu .vm-item .vi{margin:0}
+.v-menu .vm-item i .vi{width:20px;height:20px}
+.edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+.edit-grid button{display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 6px;border-radius:12px;background:var(--bg2);font-size:14px}
+.edit-hint{font-size:13px;color:var(--dim);margin:0 0 12px}
+.edit-foot{display:flex;gap:8px;justify-content:space-between}
+.fld{display:flex;flex-direction:column;gap:4px;margin:10px 0;font-size:13px;color:var(--dim)}
+.fld input{font-size:16px;color:var(--text)}

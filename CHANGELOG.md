@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Viewer: info and edit buttons in the bottom bar (edit = rotate / flip through Immich asset edits, reset), "..." menu with copy, archive, download, slideshow, add to album and adjust information (date, place, description)
 - Touch viewer like iOS Photos: date/time pill on top, "..." menu (info, add to album, download), filmstrip of neighbouring photos, bottom bar with share / favorite / delete, SVG icons instead of emoji
 - Tab bar morph: after scrolling into the past (and in the Years / Months overviews) "Years / Months / All" replace "Collections"; tapping Library merges them again
 - Mobile look closer to iOS Photos: black background in dark mode, translucent glass controls, large title, header that fades into the photos, header subtitle shows the item count at the end and the date range of the visible photos otherwise, badges without dark pill, filled tab bar icons; opaque controls with "Increase Contrast"

@@ -99,9 +99,12 @@
   <div id="vFilm" class="v-film"></div>
   <div class="v-tools">
     <button id="vShare" data-i18n-aria-label="viewer.share" aria-label="Share"><svg viewBox="0 0 24 24" class="vi" ><path d="M12 3.5v11.5M8 7.5l4-4 4 4M7 11H5.5A1.5 1.5 0 004 12.5v6A1.5 1.5 0 005.5 20h13a1.5 1.5 0 001.5-1.5v-6A1.5 1.5 0 0018.5 11H17"/></svg></button>
+    <div class="v-pill">
     <button id="vFav" data-i18n-aria-label="viewer.favorite" aria-label="Favorite"><svg viewBox="0 0 24 24" class="vi" ><path d="M12 20.3s-7.6-4.7-9.2-9.5C1.7 7.5 3.6 4.8 6.6 4.8c2 0 3.5 1.1 5.4 3 1.9-1.9 3.4-3 5.4-3 3 0 4.9 2.7 3.8 6-1.6 4.8-9.2 9.5-9.2 9.5z"/></svg></button>
     <button id="vFull" data-i18n-aria-label="viewer.fullscreen" data-i18n-title="viewer.fullscreen" aria-label="Fullscreen" title="Fullscreen (f)"><svg viewBox="0 0 24 24" class="vi" ><path d="M4 9V5.5A1.5 1.5 0 015.5 4H9M15 4h3.5A1.5 1.5 0 0120 5.5V9M20 15v3.5a1.5 1.5 0 01-1.5 1.5H15M9 20H5.5A1.5 1.5 0 014 18.5V15"/></svg></button>
-    <button id="vInfoBtn" data-i18n-aria-label="viewer.info" aria-label="Info">ⓘ</button>
+    <button id="vInfoBtn" data-i18n-aria-label="viewer.info" aria-label="Info"><svg viewBox="0 0 24 24" class="vi"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.2"/><circle cx="12" cy="7.9" r=".6" class="fl"/></svg></button>
+    <button id="vEdit" data-i18n-aria-label="viewer.edit" aria-label="Edit"><svg viewBox="0 0 24 24" class="vi"><path d="M4 8h9M17 8h3M4 16h3M11 16h9"/><circle cx="15" cy="8" r="2"/><circle cx="9" cy="16" r="2"/></svg></button>
+    </div>
     <button id="vDl" data-i18n-aria-label="viewer.download" aria-label="Download"><svg viewBox="0 0 24 24" class="vi" ><path d="M12 4v11M7.5 11l4.5 4.5 4.5-4.5M5 20h14"/></svg></button>
     <button id="vDel" data-i18n-aria-label="viewer.delete" aria-label="Delete"><svg viewBox="0 0 24 24" class="vi" ><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l.8 12.5h9.4L17.5 7M10 11v5M14 11v5"/></svg></button>
   </div>
@@ -112,6 +115,25 @@
 </div>
 
 <dialog id="albumDialog" class="dlg"><h3 data-i18n="albums.addTitle">Add to album</h3><div id="albumList" class="dlg-list"></div><button id="albumCancel" class="pill" data-i18n="common.cancel">Cancel</button></dialog>
+<dialog id="editDialog" class="dlg">
+  <h3 data-i18n="viewer.edit">Edit</h3>
+  <div class="edit-grid">
+    <button type="button" data-edit="rotL"><svg viewBox="0 0 24 24" class="vi"><path d="M5 9a7.5 7.5 0 11-.6 6.2M5 4v5h5"/></svg><span data-i18n="edit.rotateLeft">Rotate left</span></button>
+    <button type="button" data-edit="rotR"><svg viewBox="0 0 24 24" class="vi"><path d="M19 9a7.5 7.5 0 10.6 6.2M19 4v5h-5"/></svg><span data-i18n="edit.rotateRight">Rotate right</span></button>
+    <button type="button" data-edit="mirH"><svg viewBox="0 0 24 24" class="vi"><path d="M12 3v18M8 7L3.5 17H8zM16 7l4.5 10H16z"/></svg><span data-i18n="edit.mirrorH">Flip horizontally</span></button>
+    <button type="button" data-edit="mirV"><svg viewBox="0 0 24 24" class="vi"><path d="M3 12h18M7 8L17 3.5V8zM7 16l10 4.5V16z"/></svg><span data-i18n="edit.mirrorV">Flip vertically</span></button>
+  </div>
+  <p class="edit-hint" data-i18n="edit.hint"></p>
+  <div class="edit-foot"><button type="button" id="editReset" class="pill danger" data-i18n="edit.reset">Remove all edits</button><button type="button" id="editDone" class="pill primary" data-i18n="edit.done">Done</button></div>
+</dialog>
+<dialog id="infoDialog" class="dlg">
+  <h3 data-i18n="viewer.editInfo">Adjust information</h3>
+  <label class="fld"><span data-i18n="infoedit.date">Date and time</span><input id="ieDate" type="datetime-local" step="1"></label>
+  <label class="fld"><span data-i18n="infoedit.lat">Latitude</span><input id="ieLat" type="text" inputmode="decimal"></label>
+  <label class="fld"><span data-i18n="infoedit.lon">Longitude</span><input id="ieLon" type="text" inputmode="decimal"></label>
+  <label class="fld"><span data-i18n="info.description">Description</span><input id="ieDesc" type="text"></label>
+  <div class="edit-foot"><button type="button" id="ieCancel" class="pill" data-i18n="common.cancel">Cancel</button><button type="button" id="ieSave" class="pill primary" data-i18n="common.save">Save</button></div>
+</dialog>
 <div id="toast" class="toast hidden" role="status"></div>
 <script src="logger.js"></script>
 <script src="layout.js"></script>
