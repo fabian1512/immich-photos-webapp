@@ -43,17 +43,19 @@ export const ALBUMS = [
 ].map((al) => ({ ...al, assets: assets.filter(al.match) })).filter((al) => al.assets.length);
 
 /** Columnar response of /timeline/bucket for the given assets (newest first). */
+// every 4th photo belongs to a "partner" (shows the shared-library badge)
+const ownerOf = (a) => (parseInt(String(a.id).replace(/\D/g, "") || "0", 10) % 4 === 0 ? "partner" : "demo-user");
 export function columnar(list) {
   const col = (f) => list.map(f);
   return {
-    id: col((a) => a.id), ownerId: col(() => "demo"), ratio: col((a) => a.ratio), isFavorite: col((a) => a.isFavorite), visibility: col(() => "timeline"),
+    id: col((a) => a.id), ownerId: col((a) => ownerOf(a)), ratio: col((a) => a.ratio), isFavorite: col((a) => a.isFavorite), visibility: col(() => "timeline"),
     isTrashed: col(() => false), isImage: col((a) => !a.isVideo), thumbhash: col(() => null), createdAt: col((a) => a.date), fileCreatedAt: col((a) => a.date),
     localOffsetHours: col(() => 0), duration: col((a) => a.duration), stack: col(() => null), projectionType: col(() => null), livePhotoVideoId: col((a) => (a.live ? "live" : null)),
     city: col((a) => (a.city >= 0 ? CITIES[a.city][0] : null)), country: col((a) => (a.city >= 0 ? CITIES[a.city][1] : null)), latitude: col((a) => a.lat), longitude: col((a) => a.lon),
   };
 }
 export const asDto = (a) => ({
-  id: a.id, type: a.isVideo ? "VIDEO" : "IMAGE", originalFileName: a.name, localDateTime: a.date, fileCreatedAt: a.date, duration: a.duration, isFavorite: a.isFavorite,
+  id: a.id, ownerId: ownerOf(a), type: a.isVideo ? "VIDEO" : "IMAGE", originalFileName: a.name, localDateTime: a.date, fileCreatedAt: a.date, duration: a.duration, isFavorite: a.isFavorite,
   width: Math.round(1600 * Math.max(1, a.ratio)), height: Math.round((1600 * Math.max(1, a.ratio)) / a.ratio), livePhotoVideoId: a.live ? "live" : null, thumbhash: null,
   originalMimeType: a.isVideo ? "video/quicktime" : "image/jpeg", owner: { name: "Demo User" },
   exifInfo: { make: "Demo", model: "Camera X1", lensModel: "35mm f/1.8", fNumber: 1.8, exposureTime: "1/250", iso: 100, focalLength: 35, fileSizeInByte: 4300000 + (a.mi * 7919) % 3000000,

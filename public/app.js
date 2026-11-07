@@ -62,6 +62,7 @@ function showLogin(msg) {
 }
 async function showApp() {
   $("#login").classList.add("hidden"); $("#app").classList.remove("hidden");
+  api("/users/me").then((u) => { if (u && !state.userId) { state.userId = u.id; if (state.feed && grid.el && state.partnerBadge) gridRelayout(); } }).catch(() => {});
   loadSidebarAlbums(); route();
 }
 $("#loginForm").addEventListener("submit", async (e) => {
@@ -128,7 +129,7 @@ function prepare(a) {
 
 // Column-oriented response of /timeline/bucket (this is how the Immich web UI loads photos):
 // one request per month instead of many pages of full asset objects.
-function fromBucket(d) {
+function fromBucket(d, byAdded) {
   const out = [], n = (d.id || []).length;
   for (let i = 0; i < n; i++) {
     const created = Date.parse(d.fileCreatedAt && d.fileCreatedAt[i]);
@@ -139,7 +140,8 @@ function fromBucket(d) {
       isFavorite: !!(d.isFavorite && d.isFavorite[i]), livePhotoVideoId: d.livePhotoVideoId && d.livePhotoVideoId[i],
       thumbhash: d.thumbhash && d.thumbhash[i], originalFileName: "",
     };
-    a._date = local; a._ratio = Math.min(3, Math.max(0.4, ratio));
+    a.ownerId = d.ownerId && d.ownerId[i];
+    a._date = byAdded && d.createdAt && !isNaN(Date.parse(d.createdAt[i])) ? new Date(d.createdAt[i]) : local; a._ratio = Math.min(3, Math.max(0.4, ratio));
     out.push(a);
   }
   return out;
@@ -150,7 +152,7 @@ class BucketFeed {
     Object.assign(this, { params, queue: buckets && buckets.slice(), fallback, minBatch, prepare, done: false, loading: false, items: [], next: null, delegate: null });
   }
   qs(extra) { return new URLSearchParams({ ...this.params, ...extra }).toString(); }
-  fetchBucket(raw) { return api(`/timeline/bucket?${this.qs({ timeBucket: raw })}`).then(fromBucket); }
+  fetchBucket(raw) { return api(`/timeline/bucket?${this.qs({ timeBucket: raw })}`).then((d) => fromBucket(d, this.params.orderBy === "createdAt")); }
   async more() {
     if (this.delegate) { const r = await this.delegate.more(); this.done = this.delegate.done; return r; }
     this.loading = true;
@@ -184,7 +186,7 @@ window.__logContext = () => ({ view: state.view, mode: state.mode, zoom: state.z
 // Three zoom steps in "All Photos" (5 / 3 / 1 photos per row on a phone) and two grid shapes (square or original aspect ratio).
 const ZOOM_STEPS = 3;
 const state = {
-  mode: store.get("mode", "months"), zoom: Math.min(ZOOM_STEPS - 1, +store.get("zoom4", 1) || 0), shape: store.get("shape", "square") === "aspect" ? "aspect" : "square", feed: null, buckets: null, albums: null, userId: null,
+  mode: store.get("mode", "months"), zoom: Math.min(ZOOM_STEPS - 1, +store.get("zoom4", 1) || 0), shape: store.get("shape", "square") === "aspect" ? "aspect" : "square", sort: store.get("sort", "taken") === "added" ? "added" : "taken", filter: "all", partnerBadge: store.get("partnerBadge", true) !== false, feed: null, buckets: null, albums: null, userId: null,
   scroll: {}, view: "", noDate: false, overviewToken: 0, pendingYear: null,
   rev: false, sel: { on: false, ids: new Set() },
 };
@@ -290,6 +292,7 @@ function makeTile(a, idx) {
   if (a.type === "VIDEO") { const s = parseDuration(a.duration); t.append(el("span", "badge b-dur", s ? fmtDuration(s) : "▶")); }
   if (a.isFavorite) t.append(el("span", "badge b-fav", "♥"));
   if (a.livePhotoVideoId) t.append(el("span", "badge b-live", "◎"));
+  if (state.partnerBadge && state.userId && a.ownerId && a.ownerId !== state.userId) t.append(el("span", "b-shared")); // photo of a partner library
   if (state.sel.ids.has(a.id)) t.classList.add("sel");
   return t;
 }
@@ -458,8 +461,7 @@ function resetView() {
 }
 function syncControls() {
   document.querySelectorAll("#seg button").forEach((b) => b.classList.toggle("active", b.dataset.mode === state.mode));
-  $("#zOut").disabled = level() <= 0; $("#zIn").disabled = level() >= maxLevel();
-  $("#gShape").textContent = state.shape === "square" ? tr("grid.aspect") : tr("grid.square");
+
 }
 function showFeed(filters, title, { back = false, seg = false, feedOpts, noDate = false, makeFeed } = {}) {
   resetView();
@@ -488,16 +490,55 @@ function zoomToInner(target) {
   state.mode = mode; state.zoom = z; store.set("mode", mode); store.set("zoom4", z);
   if (modeChanged) showLibrary(); else { syncControls(); gridRelayout(true); }
 }
-// Display menu (top right, like the iOS Photos app): zoom in / out and square vs. aspect-ratio grid.
+// Display menu (top right, like the iOS Photos app): sort, filter, zoom, grid shape, badge.
 const gridPop = $("#gridPop"), closePop = () => { gridPop.classList.add("hidden"); $("#gMenu").setAttribute("aria-expanded", "false"); };
-$("#gMenu").onclick = (e) => { e.stopPropagation(); const open = gridPop.classList.toggle("hidden") === false; $("#gMenu").setAttribute("aria-expanded", String(open)); };
+const ICON = {
+  in: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2M11 8.5v5M8.5 11h5"/></svg>',
+  out: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2M8.5 11h5"/></svg>',
+  shape: '<svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2.5"/></svg>',
+};
+function buildGridMenu() {
+  const items = [];
+  const add = (label, { checked = null, icon = "", disabled = false, head = false, run } = {}) => items.push({ label, checked, icon, disabled, head, run });
+  const feed = state.feed, lib = feed && feed.isLibrary;
+  const reload = () => { closePop(); route(); };
+  if (lib && feed.sortable) {
+    add(tr("sort.added"), { checked: state.sort === "added", run: () => { state.sort = "added"; store.set("sort", "added"); reload(); } });
+    add(tr("sort.taken"), { checked: state.sort === "taken", run: () => { state.sort = "taken"; store.set("sort", "taken"); reload(); } });
+  }
+  if (lib) {
+    add(tr("filter.title"), { head: true });
+    add(tr("filter.all"), { checked: state.filter === "all", run: () => { state.filter = "all"; reload(); } });
+    add(tr("nav.favorites"), { checked: state.filter === "favorites", run: () => { state.filter = "favorites"; reload(); } });
+    add(tr("filter.photos"), { checked: state.filter === "photos", run: () => { state.filter = "photos"; reload(); } });
+    add(tr("nav.videos"), { checked: state.filter === "videos", run: () => { state.filter = "videos"; reload(); } });
+  }
+  add(tr("grid.options"), { head: true });
+  add(tr("zoom.in"), { icon: ICON.in, disabled: level() >= maxLevel(), run: () => { zoom(1); closePop(); } });
+  add(tr("zoom.out"), { icon: ICON.out, disabled: level() <= 0, run: () => { zoom(-1); closePop(); } });
+  add(state.shape === "square" ? tr("grid.aspect") : tr("grid.square"), { icon: ICON.shape, run: () => {
+    state.shape = state.shape === "square" ? "aspect" : "square"; store.set("shape", state.shape); closePop();
+    if (state.feed && grid.el) gridRelayout(true);
+  } });
+  add(tr("menu.show"), { head: true });
+  add(tr("menu.partnerBadge"), { checked: state.partnerBadge, run: () => {
+    state.partnerBadge = !state.partnerBadge; store.set("partnerBadge", state.partnerBadge); closePop(); if (state.feed && grid.el) gridRelayout();
+  } });
+  gridPop.replaceChildren(...items.map((it) => {
+    if (it.head) return el("div", "gp-head", it.label);
+    const b = el("button"); b.setAttribute("role", "menuitem"); b.disabled = it.disabled;
+    const mark = el("span", "gp-check", it.checked ? "✓" : ""); const ic = el("span", "gp-icon"); ic.innerHTML = it.icon;
+    b.append(mark, ic, el("span", null, it.label)); b.onclick = it.run; return b;
+  }));
+}
+$("#gMenu").onclick = (e) => {
+  e.stopPropagation();
+  const open = gridPop.classList.contains("hidden");
+  if (open) buildGridMenu();
+  gridPop.classList.toggle("hidden", !open); $("#gMenu").setAttribute("aria-expanded", String(open));
+};
 addEventListener("click", (e) => { if (!e.target.closest("#zoom")) closePop(); });
 addEventListener("keydown", (e) => { if (e.key === "Escape") closePop(); });
-$("#zOut").onclick = () => { zoom(-1); closePop(); }; $("#zIn").onclick = () => { zoom(1); closePop(); };
-$("#gShape").onclick = () => {
-  state.shape = state.shape === "square" ? "aspect" : "square"; store.set("shape", state.shape); closePop(); syncControls();
-  if (state.feed && grid.el) gridRelayout(true);
-};
 
 // ---------- Library: Years / Months (overview cards) and All Photos ----------
 const coverQueue = { running: 0, waiting: [] };
@@ -587,12 +628,27 @@ function showLibrary(restore) {
     showOverview(restore);
   }
 }
-const libParams = () => ({ visibility: "timeline", order: "desc", userId: state.userId, withPartners: "true" });
+// Library parameters. Sorting by "added" and the favorites filter map to timeline query parameters
+// (Immich does not combine partner photos with favorites, so favorites are the own ones only).
+const libParams = () => {
+  const p = { visibility: "timeline", order: "desc", userId: state.userId, withPartners: "true" };
+  if (state.sort === "added") p.orderBy = "createdAt";
+  if (state.filter === "favorites") { p.isFavorite = "true"; delete p.withPartners; }
+  return p;
+};
 // Library feed through the timeline API (userId + withPartners: partner photos are included, like in the search).
-const libraryFeed = (buckets, fallbackFilters) => new BucketFeed({}, {
-  buckets, fallback: { filters: fallbackFilters, opts: {} },
-  prepare: async (f) => { if (!state.userId) state.userId = (await api("/users/me")).id; f.params = libParams(); },
-});
+// Photos / videos filters use the search API (type filter), because the timeline has none.
+const libraryFeed = (buckets, fallbackFilters) => {
+  const type = state.filter === "photos" ? "IMAGE" : state.filter === "videos" ? "VIDEO" : null;
+  let f;
+  if (type) f = new Feed({ ...fallbackFilters, type });
+  else f = new BucketFeed({}, {
+    buckets, fallback: { filters: state.filter === "favorites" ? { ...fallbackFilters, isFavorite: true } : fallbackFilters, opts: {} },
+    prepare: async (x) => { if (!state.userId) state.userId = (await api("/users/me")).id; x.params = libParams(); },
+  });
+  f.isLibrary = true; f.sortable = !buckets;
+  return f;
+};
 function showMonth(ym) {
   const [y, m] = ym.split("-").map(Number);
   const raw = (state.buckets && (state.buckets.find((b) => b.year === y && b.month === m) || {}).raw) || new Date(Date.UTC(y, m - 1, 1)).toISOString();
