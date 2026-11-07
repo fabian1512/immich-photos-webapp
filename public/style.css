@@ -148,7 +148,7 @@ main{position:relative;overflow-y:auto;height:100%}
 .v-panel dl{margin:14px 0 0;display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:14px}
 .v-panel dt{color:var(--dim)}.v-panel dd{margin:0;word-break:break-word}
 .v-panel a{color:var(--accent)}
-@media (max-width:720px),(pointer:coarse) and (max-height:500px){.tb-right .pill{padding:6px 12px}}
+@media (max-width:720px),(pointer:coarse) and (max-height:500px){.tb-right .pill{padding:0 18px;height:44px;font-size:16px}.g-menu{width:44px;height:44px;border-radius:50%}.tb-right{gap:8px}}
 
 /* ---- Blurred placeholder (ThumbHash) ---- */
 .tile{background-size:cover;background-position:center}
