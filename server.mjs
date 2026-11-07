@@ -20,7 +20,8 @@ const bucketCache = new Map(); const BUCKET_FRESH = 30000, BUCKET_MAX = 50;
 function fetchBuckets(key, url, headers) {
   const entry = bucketCache.get(key) || {}; if (entry.busy) return entry.busy;
   entry.busy = new Promise((resolve) => {
-    http.get({ hostname: target.hostname, port: target.port, path: url, headers: { ...headers, host: target.host, "accept-encoding": "identity", "if-none-match": undefined, "if-modified-since": undefined } }, (r) => {
+    const h = { ...headers, host: target.host, "accept-encoding": "identity" }; delete h["if-none-match"]; delete h["if-modified-since"];
+    http.get({ hostname: target.hostname, port: target.port, path: url, headers: h }, (r) => {
       const chunks = []; r.on("data", (c) => chunks.push(c));
       r.on("end", () => { const e = bucketCache.get(key) || entry; e.busy = null;
         if (r.statusCode === 200) { e.body = Buffer.concat(chunks); e.type = r.headers["content-type"] || "application/json"; e.at = Date.now(); bucketCache.set(key, e); if (bucketCache.size > BUCKET_MAX) bucketCache.delete(bucketCache.keys().next().value); resolve(e); } else { if (!e.body) bucketCache.delete(key); resolve({ status: r.statusCode, body: Buffer.concat(chunks), type: r.headers["content-type"] || "text/plain", at: 0 }); } });
@@ -30,7 +31,7 @@ function fetchBuckets(key, url, headers) {
 }
 http.createServer((req, res) => {
   if (req.method === "GET" && req.url.startsWith("/api/timeline/buckets")) {
-    const url = req.url.slice(4), key = `${req.headers.authorization || ""}|${req.headers.cookie || ""}|${req.headers["x-api-key"] || ""}|${url}`;
+    const url = req.url, key = `${req.headers.authorization || ""}|${req.headers.cookie || ""}|${req.headers["x-api-key"] || ""}|${url}`;
     const send = (e) => { res.writeHead(e.status || 200, { "content-type": e.type, "cache-control": "no-store" }); res.end(e.body); };
     const e = bucketCache.get(key);
     if (e && e.body) { send(e); if (Date.now() - e.at > BUCKET_FRESH) fetchBuckets(key, url, req.headers); return; }
