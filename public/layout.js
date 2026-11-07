@@ -33,6 +33,32 @@
     return rows;
   }
 
+  /**
+   * Column grid: `cols` items per row. With several columns every row is one square cell high (the photo is cropped or
+   * fitted into the cell when drawn); with one column the row has the photo's own aspect ratio at full width.
+   * Same incremental behaviour as layoutRows: only an incomplete last row is recomputed.
+   */
+  function layoutColumns(ratios, W, cols, gap, rows) {
+    rows = rows || [];
+    let i = 0;
+    if (rows.length) { const last = rows[rows.length - 1]; if (last.full) i = last.end; else { rows.pop(); i = last.start; } }
+    const cell = cols === 1 ? W : (W - gap * (cols - 1)) / cols;
+    let top = rows.length ? rows[rows.length - 1].top + rows[rows.length - 1].h + gap : 0;
+    for (; i < ratios.length; i += cols) {
+      const end = Math.min(i + cols, ratios.length), h = cols === 1 ? W / ratios[i] : cell;
+      rows.push({ start: i, end, top, h, full: end - i === cols });
+      top += h + gap;
+    }
+    return rows;
+  }
+
+  /** Items per row for a zoom step (0 = smallest photos ... 2 = largest): 5 / 3 / 1 on phones, scaled with the width on larger screens. */
+  function columnsFor(W, zoom) {
+    const c = W < 700 ? [5, 3, 1] : [Math.round(W / 110), Math.round(W / 190), Math.max(1, Math.round(W / 560))];
+    c[1] = Math.min(c[1], c[0] - 1); c[2] = Math.max(1, Math.min(c[2], c[1] - 1));
+    return c[Math.max(0, Math.min(2, zoom))];
+  }
+
   const totalHeight = (rows) => (rows.length ? rows[rows.length - 1].top + rows[rows.length - 1].h : 0);
 
   /** Index of the first row that is still visible at y (row end >= y). */
@@ -46,6 +72,6 @@
     return lo;
   }
 
-  const api = { layoutRows, totalHeight, rowAt };
+  const api = { layoutRows, layoutColumns, columnsFor, totalHeight, rowAt };
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.Layout = api;
 })(typeof self !== "undefined" ? self : this);

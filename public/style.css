@@ -30,10 +30,14 @@ main{position:relative;overflow-y:auto;height:100%}
 .seg{display:flex;padding:3px;border-radius:999px;background:var(--bg2)}
 .seg button{background:none;padding:6px 16px;border-radius:999px;font-weight:500}
 .seg button.active{background:var(--bg);box-shadow:0 1px 3px #0004;font-weight:600}
-.zoom{justify-self:end;display:flex;border-radius:10px;background:var(--bg2);overflow:hidden}
-.zoom button{background:none;width:40px;height:32px;font-size:20px;line-height:1}
-.zoom button:disabled{opacity:.35;cursor:default}
-.zoom button+button{border-left:1px solid var(--line)}
+.zoom{justify-self:end;position:relative}
+.g-menu{width:44px;height:32px;border-radius:10px;background:var(--bg2);display:grid;place-items:center}
+.g-menu svg,.grid-pop svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.grid-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:30;min-width:210px;padding:6px;border-radius:14px;background:var(--bg);border:1px solid var(--line);box-shadow:0 10px 30px #0004;display:flex;flex-direction:column}
+.grid-pop.hidden{display:none}
+.grid-pop button{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:9px;background:none;text-align:left;font-size:15px;color:var(--text)}
+.grid-pop button:hover:not(:disabled){background:var(--bg2)}
+.grid-pop button:disabled{opacity:.35;cursor:default}
 .month{position:sticky;top:var(--bar);z-index:5;padding:8px 18px;font-weight:700;font-size:17px;background:var(--bar-bg);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
 .rows{display:flex;flex-direction:column;gap:var(--gap,4px);padding:var(--gap,4px)}
 .row{display:flex;gap:var(--gap,4px)}
@@ -91,7 +95,8 @@ main{position:relative;overflow-y:auto;height:100%}
 .card-cap span{font-size:13px;opacity:.85}
 
 /* ---- Grid (virtualized: only visible rows exist in the DOM) ---- */
-.vgrid{position:relative;margin:var(--gap,10px)}
+.vgrid{position:relative;margin:6px}
+.vgrid.sq .tile{border-radius:0}
 .vgrid .row{position:absolute;left:0}
 .tile.missing img{display:none}
 .tile.missing::before{content:"";position:absolute;inset:0;background:linear-gradient(135deg,var(--bg2),color-mix(in srgb,var(--bg2) 70%,var(--dim)))}

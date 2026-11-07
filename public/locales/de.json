@@ -31,8 +31,11 @@
   "seg.years": "Jahre",
   "seg.months": "Monate",
   "seg.all": "Alle Fotos",
-  "zoom.out": "Kleiner",
-  "zoom.in": "Größer",
+  "grid.options": "Darstellungsoptionen",
+  "grid.square": "Quadratisches Fotoraster",
+  "grid.aspect": "Seitenverhältnis-Raster",
+  "zoom.out": "Verkleinern",
+  "zoom.in": "Vergrößern",
 
   "common.back": "Zurück",
   "common.close": "Schließen",

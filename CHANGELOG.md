@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- All Photos: three zoom steps (5 / 3 / 1 photos per row on a phone, scaled on larger screens) and two grid shapes, square (default) or original aspect ratio; both in a new display menu in the top bar (replaces the −/+ buttons)
 - Grouped sidebar and floating mobile tab bar, pinch / zoom steps through years, months and all photos
 - People editing: name, birthday, favorite, hidden, merge, delete; faces in the viewer info panel (assign, use as cover, remove)
 - People keep Immich's order; compose file for running on a different machine than Immich

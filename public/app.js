@@ -181,14 +181,15 @@ class BucketFeed {
 
 window.__logContext = () => ({ view: state.view, mode: state.mode, zoom: state.zoom, rev: state.rev, items: state.feed ? state.feed.items.length : 0, tiles: document.querySelectorAll(".vgrid .tile").length, viewer: vIndex >= 0 });
 // ---------- Zustand ----------
-const GAP = 10;
-const ZOOMS = [60, 72, 86, 104, 125, 150, 180, 215, 250, 290];
+// Three zoom steps in "All Photos" (5 / 3 / 1 photos per row on a phone) and two grid shapes (square or original aspect ratio).
+const ZOOM_STEPS = 3;
 const state = {
-  mode: store.get("mode", "months"), zoom: store.get("zoom3", 4), feed: null, buckets: null, albums: null, userId: null,
+  mode: store.get("mode", "months"), zoom: Math.min(ZOOM_STEPS - 1, +store.get("zoom4", 1) || 0), shape: store.get("shape", "square") === "aspect" ? "aspect" : "square", feed: null, buckets: null, albums: null, userId: null,
   scroll: {}, view: "", noDate: false, overviewToken: 0, pendingYear: null,
   rev: false, sel: { on: false, ids: new Set() },
 };
-const targetH = () => ZOOMS[state.zoom];
+const gapPx = () => (state.shape === "square" ? 2 : 6); // spacing between photos
+const marginPx = () => (state.shape === "square" ? 0 : 6); // square grid runs edge to edge
 
 // ---------- Virtualisiertes Raster ----------
 // Rows are always laid out newest-first (index 0 = newest, as the API delivers). With state.rev (date-ordered views) they are
@@ -197,14 +198,19 @@ const grid = { el: null, rows: [], ratios: [], W: 0, H: 0, rendered: new Map() }
 const vtop = (r) => (state.rev ? grid.H - r.top - r.h : r.top);
 // Maps a y position in the scroll content (relative to the grid) to the layout coordinate of the rows.
 const ly = (y) => (state.rev ? grid.H - y : y);
-const gridWidth = () => Math.max(100, $("#content").clientWidth - GAP * 2);
+const gridWidth = () => Math.max(100, $("#content").clientWidth - marginPx() * 2);
+// Reads zoom step and shape into the grid (call before every full layout).
+function gridConfig() {
+  grid.W = gridWidth(); grid.gap = gapPx(); grid.cols = Layout.columnsFor(grid.W, state.zoom);
+  grid.cell = grid.cols === 1 ? grid.W : (grid.W - grid.gap * (grid.cols - 1)) / grid.cols;
+  if (grid.el) { grid.el.style.margin = marginPx() + "px"; grid.el.classList.toggle("sq", state.shape === "square"); }
+}
 
 function gridInit() {
   $("#content").replaceChildren();
   grid.el = el("div", "vgrid"); $("#content").append(grid.el);
-  Object.assign(grid, { rows: [], ratios: [], W: gridWidth(), H: 0 });
-  grid.rendered.clear();
-  document.documentElement.style.setProperty("--gap", GAP + "px");
+  Object.assign(grid, { rows: [], ratios: [], H: 0 });
+  grid.rendered.clear(); gridConfig();
   grid.el.style.height = "0px";
 }
 function gridInvalidateFrom(idx) {
@@ -215,7 +221,7 @@ function gridAppend(items) {
   for (const a of items) grid.ratios.push(a._ratio);
   const from = grid.rows.length && !grid.rows.at(-1).full ? grid.rows.length - 1 : grid.rows.length;
   const main = $("#main"), prevH = grid.H, first = !grid.rows.length;
-  Layout.layoutRows(grid.ratios, grid.W, targetH(), GAP, grid.rows);
+  Layout.layoutColumns(grid.ratios, grid.W, grid.cols, grid.gap, grid.rows);
   grid.H = Layout.totalHeight(grid.rows);
   gridInvalidateFrom(state.rev ? 0 : from); // mirrored: every row moves when the height changes
   grid.el.style.height = grid.H + "px";
@@ -240,9 +246,9 @@ function gridRelayout(animate) {
   const ar = Layout.rowAt(grid.rows, ly(viewTop)), anchor = ar >= 0 ? grid.rows[ar].start : 0;
   const atEnd = state.rev && main.scrollHeight - main.scrollTop - main.clientHeight < 4;
   gridInvalidateFrom(0);
-  grid.W = gridWidth();
+  gridConfig();
   grid.ratios = state.feed.items.map((a) => a._ratio);
-  grid.rows = Layout.layoutRows(grid.ratios, grid.W, targetH(), GAP, []);
+  grid.rows = Layout.layoutColumns(grid.ratios, grid.W, grid.cols, grid.gap, []);
   grid.H = Layout.totalHeight(grid.rows);
   grid.el.style.height = grid.H + "px";
   const nr = grid.rows.find((r) => anchor >= r.start && anchor < r.end);
@@ -267,7 +273,7 @@ function flipTiles(olds) {
   setTimeout(() => { for (const t of moved) { t.style.transition = ""; t.style.transformOrigin = ""; } }, 320);
 }
 function makeTile(a, idx) {
-  const size = ZOOMS[state.zoom] > 150 ? "preview" : "thumbnail";
+  const size = grid.cell > 180 ? "preview" : "thumbnail";
   // Zoom animation: keep the already loaded tile (no reload, no flash) if it has the same image size.
   const old = grid.reuse && grid.reuse.get(a.id);
   if (old && old.dataset.sz === size) { grid.reuse.delete(a.id); old.dataset.idx = idx; old.classList.toggle("sel", state.sel.ids.has(a.id)); return old; }
@@ -288,13 +294,19 @@ function makeTile(a, idx) {
   return t;
 }
 function makeRowEl(r) {
-  const items = state.feed.items, W = grid.W, T = targetH();
+  const items = state.feed.items, { W, cols, gap, cell } = grid, square = state.shape === "square";
   const row = el("div", "row");
   row.style.top = vtop(r) + "px"; row.style.height = r.h + "px"; row.style.width = W + "px";
-  for (let k = r.start; k < r.end; k++) {
-    const i = state.rev ? r.end - 1 - (k - r.start) : k; // mirrored: oldest on the left
-    const t = makeTile(items[i], i);
-    t.style.flex = r.full ? `${items[i]._ratio} 1 0` : `0 0 ${items[i]._ratio * T}px`;
+  for (let k = 0; k < r.end - r.start; k++) {
+    const i = state.rev ? r.end - 1 - k : r.start + k; // mirrored: oldest on the left
+    const ratio = items[i]._ratio, t = makeTile(items[i], i);
+    let x = k * (cell + gap), y = 0, w = cell, h = r.h;
+    if (cols === 1) { x = 0; w = W; }
+    else if (!square) { // fit the photo into its square cell, centred
+      if (ratio >= 1) h = cell / ratio; else w = cell * ratio;
+      x += (cell - w) / 2; y = (r.h - h) / 2;
+    }
+    Object.assign(t.style, { position: "absolute", left: x + "px", top: y + "px", width: w + "px", height: h + "px" });
     row.append(t);
   }
   return row;
@@ -447,6 +459,7 @@ function resetView() {
 function syncControls() {
   document.querySelectorAll("#seg button").forEach((b) => b.classList.toggle("active", b.dataset.mode === state.mode));
   $("#zOut").disabled = level() <= 0; $("#zIn").disabled = level() >= maxLevel();
+  $("#gShape").textContent = state.shape === "square" ? tr("grid.aspect") : tr("grid.square");
 }
 function showFeed(filters, title, { back = false, seg = false, feedOpts, noDate = false, makeFeed } = {}) {
   resetView();
@@ -461,7 +474,7 @@ function showFeed(filters, title, { back = false, seg = false, feedOpts, noDate 
 // Zoom steps. In the library they run through Years -> Months -> All Photos (small ... large);
 // everywhere else only through the grid sizes.
 function level() { return state.view === "library" ? (state.mode === "years" ? 0 : state.mode === "months" ? 1 : 2 + state.zoom) : state.zoom; }
-function maxLevel() { return state.view === "library" ? 1 + ZOOMS.length : ZOOMS.length - 1; }
+function maxLevel() { return state.view === "library" ? 1 + ZOOM_STEPS : ZOOM_STEPS - 1; }
 function zoom(d) { zoomTo(level() + d); }
 function zoomTo(target) {
   const t0 = performance.now(); zoomToInner(target); Log.log("zoom", { to: target, ms: Math.round(performance.now() - t0) });
@@ -469,13 +482,22 @@ function zoomTo(target) {
 function zoomToInner(target) {
   const lib = state.view === "library", cur = level(), n = Math.min(maxLevel(), Math.max(0, target));
   if (n === cur) return;
-  if (!lib) { state.zoom = n; store.set("zoom3", n); syncControls(); gridRelayout(true); return; }
+  if (!lib) { state.zoom = n; store.set("zoom4", n); syncControls(); gridRelayout(true); return; }
   const mode = n === 0 ? "years" : n === 1 ? "months" : "all", z = n >= 2 ? n - 2 : state.zoom;
   const modeChanged = mode !== state.mode;
-  state.mode = mode; state.zoom = z; store.set("mode", mode); store.set("zoom3", z);
+  state.mode = mode; state.zoom = z; store.set("mode", mode); store.set("zoom4", z);
   if (modeChanged) showLibrary(); else { syncControls(); gridRelayout(true); }
 }
-$("#zOut").onclick = () => zoom(-1); $("#zIn").onclick = () => zoom(1);
+// Display menu (top right, like the iOS Photos app): zoom in / out and square vs. aspect-ratio grid.
+const gridPop = $("#gridPop"), closePop = () => { gridPop.classList.add("hidden"); $("#gMenu").setAttribute("aria-expanded", "false"); };
+$("#gMenu").onclick = (e) => { e.stopPropagation(); const open = gridPop.classList.toggle("hidden") === false; $("#gMenu").setAttribute("aria-expanded", String(open)); };
+addEventListener("click", (e) => { if (!e.target.closest("#zoom")) closePop(); });
+addEventListener("keydown", (e) => { if (e.key === "Escape") closePop(); });
+$("#zOut").onclick = () => { zoom(-1); closePop(); }; $("#zIn").onclick = () => { zoom(1); closePop(); };
+$("#gShape").onclick = () => {
+  state.shape = state.shape === "square" ? "aspect" : "square"; store.set("shape", state.shape); closePop(); syncControls();
+  if (state.feed && grid.el) gridRelayout(true);
+};
 
 // ---------- Library: Years / Months (overview cards) and All Photos ----------
 const coverQueue = { running: 0, waiting: [] };

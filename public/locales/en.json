@@ -31,8 +31,11 @@
   "seg.years": "Years",
   "seg.months": "Months",
   "seg.all": "All Photos",
-  "zoom.out": "Smaller",
-  "zoom.in": "Larger",
+  "grid.options": "Display options",
+  "grid.square": "Square photo grid",
+  "grid.aspect": "Aspect ratio grid",
+  "zoom.out": "Zoom out",
+  "zoom.in": "Zoom in",
 
   "common.back": "Back",
   "common.close": "Close",

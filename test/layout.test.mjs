@@ -53,3 +53,32 @@ test("empty list and single item", () => {
   const one = layoutRows([1.5], W, T, GAP);
   assert.equal(one.length, 1); assert.equal(one[0].full, false);
 });
+
+const { layoutColumns, columnsFor } = createRequire(import.meta.url)("../public/layout.js");
+
+test("columnsFor: 5 / 3 / 1 on phones, strictly fewer columns per zoom step everywhere", () => {
+  assert.deepEqual([0, 1, 2].map((z) => columnsFor(390, z)), [5, 3, 1]);
+  for (const w of [320, 699, 700, 1024, 1512, 2560]) {
+    const c = [0, 1, 2].map((z) => columnsFor(w, z));
+    assert.ok(c[0] > c[1] && c[1] > c[2] && c[2] >= 1, `${w}: ${c}`);
+  }
+});
+
+test("layoutColumns: square cells with several columns, own aspect ratio with one", () => {
+  const rs = Array.from({ length: 11 }, (_, i) => [1.5, 0.75, 1][i % 3]);
+  const rows = layoutColumns(rs, 300, 3, 2, []);
+  assert.equal(rows.length, 4);
+  const cell = (300 - 4) / 3;
+  assert.ok(rows.every((r) => Math.abs(r.h - cell) < 1e-9));
+  assert.equal(rows[3].end - rows[3].start, 2); assert.equal(rows[3].full, false);
+  assert.ok(Math.abs(rows[1].top - (cell + 2)) < 1e-9);
+  const one = layoutColumns([2, 0.5], 400, 1, 4, []);
+  assert.deepEqual(one.map((r) => r.h), [200, 800]);
+});
+
+test("layoutColumns: appending equals a full layout", () => {
+  const rs = Array.from({ length: 53 }, (_, i) => [1.33, 0.75, 1.78][i % 3]);
+  const all = layoutColumns(rs, 390, 5, 2, []);
+  let rows = []; for (let n = 7; n < rs.length + 7; n += 7) rows = layoutColumns(rs.slice(0, Math.min(n, rs.length)), 390, 5, 2, rows);
+  assert.deepEqual(rows, all);
+});
