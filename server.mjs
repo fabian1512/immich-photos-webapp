@@ -14,12 +14,40 @@ const types = {
 };
 
 let logWindow = [];
+// /timeline/buckets (month counts) can take 20+ s on big libraries. Stale-while-revalidate cache, per user (auth header/cookie) and URL:
+// a repeat request is answered at once from memory while a fresh copy is fetched in the background. Only GET 200 JSON, memory only.
+const bucketCache = new Map(); const BUCKET_FRESH = 30000, BUCKET_MAX = 50;
+function fetchBuckets(key, url, headers) {
+  const entry = bucketCache.get(key) || {}; if (entry.busy) return entry.busy;
+  entry.busy = new Promise((resolve) => {
+    http.get({ hostname: target.hostname, port: target.port, path: url, headers: { ...headers, host: target.host, "accept-encoding": "identity" } }, (r) => {
+      const chunks = []; r.on("data", (c) => chunks.push(c));
+      r.on("end", () => { const e = bucketCache.get(key) || entry; e.busy = null;
+        if (r.statusCode === 200) { e.body = Buffer.concat(chunks); e.type = r.headers["content-type"] || "application/json"; e.at = Date.now(); bucketCache.set(key, e); if (bucketCache.size > BUCKET_MAX) bucketCache.delete(bucketCache.keys().next().value); resolve(e); } else { if (!e.body) bucketCache.delete(key); resolve({ status: r.statusCode, body: Buffer.concat(chunks), type: r.headers["content-type"] || "text/plain", at: 0 }); } });
+    }).on("error", () => { entry.busy = null; resolve(null); });
+  });
+  bucketCache.set(key, entry); return entry.busy;
+}
 http.createServer((req, res) => {
+  if (req.method === "GET" && req.url.startsWith("/api/timeline/buckets")) {
+    const url = req.url.slice(4), key = `${req.headers.authorization || ""}|${req.headers.cookie || ""}|${req.headers["x-api-key"] || ""}|${url}`;
+    const send = (e) => { res.writeHead(e.status || 200, { "content-type": e.type, "cache-control": "no-store" }); res.end(e.body); };
+    const e = bucketCache.get(key);
+    if (e && e.body) { send(e); if (Date.now() - e.at > BUCKET_FRESH) fetchBuckets(key, url, req.headers); return; }
+    fetchBuckets(key, url, req.headers).then((f) => {
+      if (f) return send(f);
+      res.writeHead(502); res.end("Immich nicht erreichbar");
+    });
+    return;
+  }
   if (req.url.startsWith("/api/")) {
     const headers = { ...req.headers, host: target.host };
+    const t0 = Date.now(); let ttfb = 0;
+    // Slow Immich requests (> 1.5 s) are logged without ids or query values: `docker logs fotos-web`.
+    res.on("finish", () => { const ms = Date.now() - t0; if (ms > 1500) console.log("[slow]", req.method, req.url.split("?")[0].replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, ":id"), `${ms} ms (first byte ${ttfb} ms)`, res.statusCode); });
     const up = http.request({
       hostname: target.hostname, port: target.port, path: req.url, method: req.method, headers,
-    }, (r) => { res.writeHead(r.statusCode, r.headers); r.pipe(res); });
+    }, (r) => { ttfb = Date.now() - t0; res.writeHead(r.statusCode, r.headers); r.pipe(res); });
     up.on("error", () => { res.writeHead(502); res.end("Immich nicht erreichbar"); });
     req.pipe(up);
     return;
