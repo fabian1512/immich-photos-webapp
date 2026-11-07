@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Touch viewer like iOS Photos: date/time pill on top, "..." menu (info, add to album, download), filmstrip of neighbouring photos, bottom bar with share / favorite / delete, SVG icons instead of emoji
+- Tab bar morph: after scrolling into the past (and in the Years / Months overviews) "Years / Months / All" replace "Collections"; tapping Library merges them again
 - Mobile look closer to iOS Photos: black background in dark mode, translucent glass controls, large title, header that fades into the photos, header subtitle shows the item count at the end and the date range of the visible photos otherwise, badges without dark pill, filled tab bar icons; opaque controls with "Increase Contrast"
 - Display menu: sort All Photos by added or taken date, filter (all, favorites, photos, videos), badge on photos of partner libraries (can be switched off)
 - All Photos: three zoom steps (5 / 3 / 1 photos per row on a phone, scaled on larger screens) and two grid shapes, square (default) or original aspect ratio; both in a new display menu in the top bar (replaces the −/+ buttons)

@@ -369,7 +369,7 @@ function updateDate() {
     $("#tDate").textContent = txt;
   });
 }
-$("#main").addEventListener("scroll", () => { renderVisible(); updateDate(); loadIfNearEnd(); }, { passive: true });
+$("#main").addEventListener("scroll", () => { renderVisible(); updateDate(); loadIfNearEnd(); updateTabSeg(); }, { passive: true });
 // Start loading well before the end of the loaded photos (about two screens). Checked on every scroll and after every
 // load, so a scroll that happens while a request is running is not lost (an IntersectionObserver would not fire again).
 function loadIfNearEnd() {
@@ -474,6 +474,7 @@ function setHeader(title, { back = false, seg = false, zoom = false, select = fa
   $("#seg").classList.toggle("hidden", !seg);
   $("#zoom").classList.toggle("hidden", !zoom);
   $("#selToggle").classList.toggle("hidden", !select);
+  updateTabSeg();
 }
 function resetView() {
   state.overviewToken++; coverQueue.waiting.length = 0;
@@ -562,6 +563,33 @@ $("#gMenu").onclick = (e) => {
 addEventListener("click", (e) => { if (!e.target.closest("#zoom")) closePop(); });
 addEventListener("keydown", (e) => { if (e.key === "Escape") closePop(); });
 
+// Tab bar morph (like the iOS Photos app): after scrolling into the past, or in the Years / Months overviews, the library button
+// becomes a round button and "Years / Months / All" appear instead of "Collections"; tapping Library merges them again.
+function updateTabSeg() {
+  const lib = state.view === "library", main = $("#main");
+  let on = false;
+  if (lib) {
+    if (state.mode !== "all") on = true;
+    else {
+      if (state.rev && grid.el && main.scrollHeight - main.scrollTop - main.clientHeight > 400) state.tabSeg = true;
+      on = !!state.tabSeg;
+    }
+  } else state.tabSeg = false;
+  if (!lib) state.tabSeg = false;
+  document.body.classList.toggle("tabs-seg", on);
+  $("#tabSeg").querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.mode === state.mode));
+}
+$("#tabSeg").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b || b.dataset.mode === state.mode) return;
+  state.mode = b.dataset.mode; store.set("mode", state.mode); state.tabSeg = true; showLibrary();
+});
+document.querySelector('#tabbar [data-tab="photos"]').addEventListener("click", (e) => {
+  if (!document.body.classList.contains("tabs-seg") || state.view !== "library") return;
+  e.preventDefault(); state.tabSeg = false;
+  if (state.mode !== "all") { state.mode = "all"; store.set("mode", "all"); showLibrary(); }
+  else { const m = $("#main"); m.scrollTo({ top: m.scrollHeight, behavior: "smooth" }); }
+  updateTabSeg();
+});
 // ---------- Library: Years / Months (overview cards) and All Photos ----------
 const coverQueue = { running: 0, waiting: [] };
 function pumpCovers() {
@@ -641,7 +669,7 @@ async function showOverview(restore) {
   else main.scrollTop = restore ? state.scroll[mode] || 0 : 0;
 }
 function showLibrary(restore) {
-  state.view = "library";
+  state.view = "library"; setTimeout(updateTabSeg, 0);
   if (state.mode === "all") {
     showFeed({ visibility: "timeline" }, tr("nav.library"), { seg: true, makeFeed: () => libraryFeed(null, { visibility: "timeline" }) }); state.view = "library";
   } else {
@@ -1229,7 +1257,7 @@ function showViewer(reuse, keep) {
     i.onerror = () => { stage.replaceChildren(el("p", null, tr("viewer.noPreview"))); stage.firstChild.style.color = "#fff"; };
     stage.append(i);
   }
-  $("#vFav").textContent = a.isFavorite ? "♥" : "♡";
+  $("#vFav").classList.toggle("on", !!a.isFavorite); updateViewerChrome(a);
   const infoLine = () => $("#vInfo").replaceChildren(el("span", null, `${a.originalFileName || ""}${a._date ? " · " + dateFmt.format(a._date) : ""}`));
   infoLine();
   if (!a.originalFileName) { // timeline data contains no file name: load it on demand
@@ -1240,6 +1268,56 @@ function showViewer(reuse, keep) {
   if (vIndex > state.feed.items.length - 20) loadMore();
   ensureNeighbours(keep);
 }
+// Touch layout of the viewer (like the iOS Photos app): date pill on top, "..." menu, filmstrip, bottom tool bar.
+const dayFmt = () => fmt({ day: "numeric", month: "long" }), dayYearFmt = () => fmt({ day: "numeric", month: "long", year: "numeric" }), timeFmt = () => fmt({ hour: "2-digit", minute: "2-digit" });
+function updateViewerChrome(a) {
+  const d = a._date, box = $("#vDate");
+  if (d) {
+    const sameYear = d.getUTCFullYear() === new Date().getFullYear();
+    box.firstChild.textContent = (sameYear ? dayFmt() : dayYearFmt()).format(d);
+    box.lastChild.textContent = timeFmt().format(d) + (state.userId && a.ownerId && a.ownerId !== state.userId ? " \u{1F465}" : "");
+  } else { box.firstChild.textContent = ""; box.lastChild.textContent = ""; }
+  buildFilmstrip();
+}
+// Filmstrip: neighbouring photos around the current one (left = older), tap to jump.
+function buildFilmstrip() {
+  const film = $("#vFilm"), items = state.feed.items, R = 8, out = [];
+  for (let k = R; k >= -R; k--) { // k > 0 = older
+    const i = state.rev ? vIndex + k : vIndex - k;
+    if (i < 0 || i >= items.length) continue;
+    const b = el("button", "fs" + (i === vIndex ? " cur" : "")), im = el("img"); im.alt = ""; im.src = img(items[i].id, "thumbnail"); im.draggable = false;
+    b.append(im); b.onclick = (e) => { e.stopPropagation(); if (i !== vIndex && !paging) { vIndex = i; showViewer(); } };
+    out.push(b);
+  }
+  film.replaceChildren(...out);
+}
+async function shareItem(a) {
+  if (a.type === "IMAGE" && navigator.canShare) {
+    try {
+      const r = await fetch(`/api/assets/${a.id}/original`, { credentials: "same-origin" });
+      if (r.ok) {
+        const blob = await r.blob(), file = new File([blob], a.originalFileName || `${a.id}.jpg`, { type: blob.type || "image/jpeg" });
+        if (navigator.canShare({ files: [file] })) { await navigator.share({ files: [file] }); return; }
+      }
+    } catch (e) { if (e && e.name === "AbortError") return; }
+  }
+  await downloadItems([a]);
+}
+$("#vShare").onclick = guard(async () => { const a = curItem(); if (a) await shareItem(a); });
+const moreMenu = $("#vMoreMenu"), closeMore = () => moreMenu.classList.add("hidden");
+$("#vMore").onclick = (e) => {
+  e.stopPropagation();
+  if (!moreMenu.classList.contains("hidden")) return closeMore();
+  const a = curItem(); if (!a) return;
+  const mk = (label, fn) => { const b = el("button", null, label); b.setAttribute("role", "menuitem"); b.onclick = (ev) => { ev.stopPropagation(); closeMore(); fn(); }; return b; };
+  moreMenu.replaceChildren(
+    mk(tr("viewer.info"), () => { if ($("#vPanel").classList.contains("hidden")) $("#vInfoBtn").click(); }),
+    mk(tr("albums.addTitle"), guard(async () => { const x = curItem(); if (x) await addToAlbum([x]); })),
+    mk(tr("viewer.download"), guard(async () => { const x = curItem(); if (x) await downloadItems([x]); })),
+  );
+  moreMenu.classList.remove("hidden");
+};
+addEventListener("click", (e) => { if (!e.target.closest("#vMoreMenu")) closeMore(); });
 // d is the visual direction (1 = right). In the mirrored grid the right neighbour is the newer photo.
 const idxFor = (d) => { const n = vIndex + (state.rev ? -d : d); return n >= 0 && n < state.feed.items.length ? n : -1; };
 let paging = false; // a slide animation is running
@@ -1319,7 +1397,7 @@ $("#vInfoBtn").onclick = () => {
   if (touchUI()) { if (hidden) { showInfoPanel(); $("#viewer").classList.add("info-open"); } else closeInfoSheet(); }
   else hidden ? showInfoPanel() : panel.classList.add("hidden");
 };
-$("#vFav").onclick = guard(async () => { const a = curItem(); if (!a) return; await setFavorite([a], !a.isFavorite); $("#vFav").textContent = a.isFavorite ? "♥" : "♡"; });
+$("#vFav").onclick = guard(async () => { const a = curItem(); if (!a) return; await setFavorite([a], !a.isFavorite); $("#vFav").classList.toggle("on", !!a.isFavorite); });
 $("#vDl").onclick = guard(async () => { const a = curItem(); if (a) await downloadItems([a]); });
 $("#vDel").onclick = guard(async () => {
   const a = curItem(); if (!a) return; const idx = vIndex;

@@ -93,6 +93,9 @@
   "viewer.info": "Info",
   "viewer.download": "Download",
   "viewer.delete": "Delete",
+  "viewer.share": "Share",
+  "viewer.more": "More",
+  "seg.allShort": "All",
   "viewer.noPreview": "No preview available",
 
   "info.date": "Date",

@@ -292,3 +292,50 @@ nav .rowlabel svg{width:20px;height:20px;flex:none;fill:none;stroke:var(--accent
   body:has(.vgrid) .topbar::before{content:"";position:absolute;inset:0 0 -30px 0;z-index:-1;pointer-events:none;background:linear-gradient(to bottom,color-mix(in srgb,var(--bg) 82%,transparent),color-mix(in srgb,var(--bg) 45%,transparent) 65%,transparent);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);-webkit-mask-image:linear-gradient(#000 50%,transparent);mask-image:linear-gradient(#000 50%,transparent)}
   #content:has(.vgrid){padding-top:var(--bar)}
 }
+
+/* ---- Viewer icons (SVG instead of emoji) ---- */
+.vi{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;display:block;margin:auto}
+.vi .fl{fill:currentColor;stroke:none}
+#vFav.on .vi path{fill:currentColor}
+.v-top,.v-film,#vShare{display:none}
+.v-menu{position:absolute;right:0;top:calc(100% + 8px);min-width:210px;padding:6px;border-radius:16px;background:rgba(44,44,46,.92);-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px);box-shadow:0 10px 30px #0008,inset 0 0 0 1px #ffffff1f;display:flex;flex-direction:column}
+.v-menu.hidden{display:none}
+.viewer .v-menu button{position:static;width:auto;height:auto;background:none;border-radius:10px;padding:11px 14px;font-size:16px;text-align:left;color:#fff}
+.viewer .v-menu button:active{background:#ffffff22}
+@media (pointer:coarse){
+  /* iOS-like single photo layout: top date pill and "..." menu, filmstrip, bottom tool bar */
+  .viewer button{-webkit-backdrop-filter:blur(20px) saturate(1.8);backdrop-filter:blur(20px) saturate(1.8);background:rgba(88,88,94,.38);box-shadow:inset 0 0 0 1px #ffffff26,inset 0 1px 0 #ffffff24}
+  .v-top{display:flex;position:absolute;top:max(12px,env(safe-area-inset-top));left:0;right:0;justify-content:center;align-items:flex-start;z-index:3;pointer-events:none}
+  .v-date{pointer-events:auto;min-width:150px;height:46px;padding:4px 22px;border-radius:23px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;background:rgba(88,88,94,.38);-webkit-backdrop-filter:blur(20px) saturate(1.8);backdrop-filter:blur(20px) saturate(1.8);box-shadow:inset 0 0 0 1px #ffffff26,inset 0 1px 0 #ffffff24;line-height:1.15}
+  .v-date b{font-size:16px;font-weight:600}.v-date span{font-size:13px;opacity:.9}
+  .v-top .v-more{position:absolute;right:16px;top:0;width:46px;height:46px;pointer-events:auto}
+  .v-top .v-menu{right:16px;top:54px;pointer-events:auto}
+  .viewer .live-pill{top:calc(max(12px,env(safe-area-inset-top)) + 62px);left:16px}
+  .v-tools{top:auto;left:20px;right:20px;bottom:max(14px,env(safe-area-inset-bottom));justify-content:space-between;align-items:center;gap:10px}
+  .v-tools button{width:56px;height:56px}
+  #vShare{display:block;order:1}#vFav{order:2;width:150px;border-radius:28px}#vDl{display:none}#vDel{order:3}#vFull{display:none}
+  .v-film{display:flex;position:absolute;left:0;right:0;bottom:calc(max(14px,env(safe-area-inset-bottom)) + 70px);height:44px;justify-content:center;align-items:center;gap:2px;z-index:3;overflow:hidden;padding:0 8px}
+  .v-film .fs{position:static;width:22px;height:34px;padding:0;border-radius:3px;overflow:hidden;background:#222;flex:none;opacity:.9;-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:none}
+  .v-film .fs.cur{width:36px;height:44px;margin:0 6px;opacity:1}
+  .v-film .fs img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+  #vInfo{display:none}
+  .viewer.info-open .v-top,.viewer.info-open .v-film,.viewer.info-open .v-tools,.viewer.info-open .live-pill{opacity:0;pointer-events:none}
+  .viewer.immersive .v-top,.viewer.immersive .v-film{display:none!important}
+}
+
+/* ---- Tab bar morph: library button + Years/Months/All, like the iOS Photos app ---- */
+.tab-seg{display:none}
+@media (max-width:720px),(pointer:coarse) and (max-height:500px){
+  .tabbar,.tabbar a,.search-btn{transition:width .38s cubic-bezier(.3,.8,.3,1),height .3s,flex .38s cubic-bezier(.3,.8,.3,1),background .3s,box-shadow .3s,opacity .25s,padding .3s}
+  .tab-seg{display:flex;flex:0 0 0;max-width:0;opacity:0;overflow:hidden;gap:0;align-items:center;transition:flex .38s cubic-bezier(.3,.8,.3,1),max-width .38s,opacity .3s;white-space:nowrap}
+  .tab-seg button{flex:1;background:none;color:var(--text);font-size:17px;font-weight:500;border-radius:24px;height:100%;padding:0 4px}
+  .tab-seg button.active{background:rgba(255,255,255,.16);font-weight:600}
+  @media (prefers-color-scheme: light){.tab-seg button.active{background:rgba(0,0,0,.08)}}
+  body.tabs-seg .tabbar{width:calc(100% - 20px - max(20px,env(safe-area-inset-left)) - 58px);height:48px;padding:0;gap:10px;background:none;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;bottom:max(12px,calc(env(safe-area-inset-bottom) - 12px))}
+  body.tabs-seg .tabbar a[data-tab="photos"]{flex:0 0 48px;height:48px;border-radius:50%;background:var(--glass);box-shadow:inset 0 0 0 1px var(--glass-edge),inset 0 1px 0 rgba(255,255,255,.14),0 2px 14px rgba(0,0,0,.28);-webkit-backdrop-filter:blur(22px) saturate(1.8);backdrop-filter:blur(22px) saturate(1.8)}
+  body.tabs-seg .tabbar a[data-tab="photos"] span{display:none}
+  body.tabs-seg .tabbar a[data-tab="collections"]{flex:0 0 0;width:0;padding:0;opacity:0;overflow:hidden;pointer-events:none}
+  body.tabs-seg .tab-seg{flex:1;max-width:260px;opacity:1;height:48px;padding:4px;border-radius:24px;background:var(--glass);box-shadow:inset 0 0 0 1px var(--glass-edge),inset 0 1px 0 rgba(255,255,255,.14),0 2px 14px rgba(0,0,0,.28);-webkit-backdrop-filter:blur(22px) saturate(1.8);backdrop-filter:blur(22px) saturate(1.8)}
+  body.tabs-seg .search-btn{width:48px;height:48px;bottom:max(12px,calc(env(safe-area-inset-bottom) - 12px))}
+  body.tabs-seg .search-btn svg{width:24px;height:24px}
+}
