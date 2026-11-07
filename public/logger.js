@@ -2,7 +2,7 @@
 // Small client-side diagnostics: sends errors, main-thread stalls and gesture data to POST /log (shows up in `docker logs fotos-web`).
 // Contains no photo IDs, names or credentials. Max. 100 messages per page load.
 (function () {
-  const BUILD = "v27";
+  const BUILD = "v28";
   const queue = []; let sent = 0, timer = 0;
   function flush() {
     timer = 0; if (!queue.length) return;
