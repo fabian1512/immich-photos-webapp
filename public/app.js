@@ -1207,7 +1207,7 @@ async function showInfoPanel() {
   panel.replaceChildren(el("h4", null, info.originalFileName || a.originalFileName || ""), dl, facesBox);
   loadFaces(a, facesBox);
 }
-$("#vClose").onclick = closeAnimated; $("#vPrev").onclick = () => step(-1); $("#vNext").onclick = () => step(1);
+$("#vClose").onclick = closeAnimated;
 // Touch devices: the info panel is a bottom sheet (swipe up on the photo, swipe down to close), like in the iOS Photos app.
 const touchUI = () => matchMedia("(pointer: coarse)").matches;
 function closeInfoSheet() {
@@ -1234,7 +1234,28 @@ addEventListener("keydown", (e) => {
 // Zoom (mouse wheel, double click, two-finger gesture), pan, swipe to navigate
 const stage = $("#vStage"), ptrs = new Map();
 let pinch0 = 0, pinchS = 1, downX = 0, downY = 0, moved = false;
-stage.addEventListener("wheel", (e) => { if (e.target.tagName === "VIDEO") return; e.preventDefault(); zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0018))); }, { passive: false });
+// Two-finger horizontal swipe on a trackpad (wheel events with deltaX) pages through photos, following the fingers like a touch swipe.
+let wheelSwipe = null, wheelIdle = 0, wheelLocked = false;
+function wheelPage(e) {
+  clearTimeout(wheelIdle); wheelIdle = setTimeout(() => { wheelSwipe = null; wheelLocked = false; }, 140);
+  if (wheelLocked || paging) return;
+  if (!wheelSwipe) wheelSwipe = { acc: 0, d: 0, nb: null, last: 0 };
+  const w = wheelSwipe; w.acc -= e.deltaX; w.last = e.deltaX;
+  const d = w.acc < 0 ? 1 : -1;
+  if (d !== w.d) { w.d = d; w.nb = makeNeighbour(d); }
+  const tx = w.nb ? w.acc : w.acc * 0.3, cur = currentEl();
+  if (cur) { cur.style.transition = "none"; cur.style.transform = `translate3d(${tx}px,0,0)`; }
+  if (w.nb) { w.nb.style.transition = "none"; w.nb.style.transform = `translate3d(${d * slideW() + w.acc}px,0,0)`; }
+  clearTimeout(w.t);
+  w.t = setTimeout(() => { // fingers lifted (no event for a moment): settle
+    if (wheelSwipe !== w) return;
+    wheelLocked = true; const commit = !!w.nb && Math.abs(w.acc) > stage.clientWidth * 0.25;
+    Log.log("wheel-swipe", { acc: Math.round(w.acc), commit });
+    finishPage(w.d, w.nb, commit);
+  }, 90);
+}
+stage.addEventListener("wheel", (e) => { if (e.target.tagName === "VIDEO") return; e.preventDefault();
+  if (!e.ctrlKey && vz.s === 1 && !$("#viewer").classList.contains("info-open") && (wheelSwipe || Math.abs(e.deltaX) > Math.abs(e.deltaY))) { wheelPage(e); return; } zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0018))); }, { passive: false });
 let tapTimer = 0;
 stage.addEventListener("dblclick", (e) => { clearTimeout(tapTimer); if (e.target.tagName === "VIDEO") return; if (vz.s > 1) resetZoom(); else zoomAt(e.clientX, e.clientY, 2.5); });
 let fromVideo = false;

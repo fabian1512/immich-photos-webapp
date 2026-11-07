@@ -55,8 +55,6 @@ main{position:relative;overflow-y:auto;height:100%}
 #vStage img,#vStage video{max-width:100vw;max-height:100vh;object-fit:contain}
 .viewer button{position:absolute;background:#ffffff22;color:#fff;border-radius:999px;width:44px;height:44px;font-size:22px;z-index:2}
 #vClose{top:16px;left:16px}
-.nav{top:50%;transform:translateY(-50%)}
-#vPrev{left:16px}#vNext{right:16px}
 #vInfo{position:absolute;left:0;right:0;bottom:0;padding:12px 18px;color:#fff;background:linear-gradient(transparent,#000a);display:flex;justify-content:space-between;gap:12px;font-size:13px}
 #vInfo a{color:#fff}
 .tabbar,.search-btn{display:none}
@@ -186,7 +184,7 @@ main{position:relative;overflow-y:auto;height:100%}
 .map-ctl button+button{border-top:1px solid var(--line)}
 .map-attr{position:absolute;right:6px;bottom:4px;font-size:11px;background:#fffc;color:#333;padding:1px 6px;border-radius:4px;z-index:5}
 /* ---- Viewer: focus / fullscreen mode ---- */
-.viewer.immersive .v-tools,.viewer.immersive #vClose,.viewer.immersive .nav,.viewer.immersive #vInfo,.viewer.immersive .v-panel{display:none!important}
+.viewer.immersive .v-tools,.viewer.immersive #vClose,.viewer.immersive #vInfo,.viewer.immersive .v-panel{display:none!important}
 .viewer.immersive{cursor:none}
 
 /* ---- Language picker ---- */
@@ -238,7 +236,7 @@ nav .rowlabel svg{width:20px;height:20px;flex:none;fill:none;stroke:var(--accent
 
 /* Touch devices: info as a bottom sheet instead of the side panel; opened by swiping up on the photo */
 @media (pointer:coarse){
-  #vInfoBtn,#vClose,.viewer .nav{display:none}
+  #vInfoBtn,#vClose{display:none}
   #vStage{transition:transform .38s cubic-bezier(.22,.7,.2,1)}
   .v-panel{position:fixed;left:0;right:0;top:auto;bottom:0;width:auto;height:62vh;border-radius:18px 18px 0 0;padding:22px 18px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px #0008;transform:translateY(100%);transition:transform .38s cubic-bezier(.22,.7,.2,1)}
   .v-panel.hidden{display:block!important;visibility:hidden}
@@ -246,9 +244,9 @@ nav .rowlabel svg{width:20px;height:20px;flex:none;fill:none;stroke:var(--accent
   .viewer.info-open #vStage{transform:translateY(-16vh) scale(.72)}
   .viewer:has(#vPanel:not(.hidden)) .v-tools,.viewer:has(#vPanel:not(.hidden)) #vInfo{right:0}
   .viewer:has(#vPanel:not(.hidden)) .v-tools{right:16px}
-  .viewer.info-open #vInfo,.viewer.info-open .nav{display:none}
+  .viewer.info-open #vInfo{display:none}
 }
-.viewer.closing .v-tools,.viewer.closing #vClose,.viewer.closing #vInfo,.viewer.closing .nav,.viewer.closing .v-panel{opacity:0;transition:opacity .18s}
+.viewer.closing .v-tools,.viewer.closing #vClose,.viewer.closing #vInfo,.viewer.closing .v-panel{opacity:0;transition:opacity .18s}
 
 /* Live Photos: hold the photo to play it (like in the iOS Photos app) */
 #vLiveVideo{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none;opacity:0;transition:opacity .15s;z-index:1}
